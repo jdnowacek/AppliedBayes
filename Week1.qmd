@@ -1,0 +1,162 @@
+---
+title: "Week1"
+format: html
+---
+
+```{r}
+# install.packages("nimble")
+# install.packages("igraph")
+# install.packages("coda")
+# install.packages("R6")
+# writeLines('PATH="${RTOOLS40_HOME}\\usr\\bin;${PATH}"', con = "~/.Renviron")
+```
+
+```{r}
+library(nimble)
+library(igraph)
+library(coda)
+library(R6)
+```
+
+Simple code to use Nimble
+
+At this stage we will not use Nimble to analyse data or fit a statistical model. We will just
+use it to sample from well-known distributions.
+
+
+Sample from a Normal distribution
+
+We will pretend that the ‘rnorm()’ R function is not available. We will use Nimble to sample
+1000 realisations/deviates from a 𝑁 (0, 32) distribution. (This is an overkill really! Nimble is
+supposed to be used for more complex tasks.) Use the following code, to also plot a histogram
+of the sample. Do not worry about knowing what each line does exactly. We will
+discuss this in detail in Chapter 2.
+
+```{r}
+# Model
+sim1code <- nimbleCode({
+y ~ dnorm(0, sd = 3)
+})
+# Build model
+sim1Model <- nimbleModel(sim1code)
+# To compile the model
+Csim1Model <- compileNimble(sim1Model)
+# set up monitoring for y
+sim1ModelConf <- configureMCMC(sim1Model, monitors = c('y'), print = TRUE)
+# build the algorithm
+sim1ModelMCMC <- buildMCMC(sim1ModelConf)
+# compile the sampler
+Csim1ModelMCMC <- compileNimble(sim1ModelMCMC, project = sim1Model)
+set.seed(1)
+sample1 <- runMCMC(Csim1ModelMCMC, niter = 1000, thin=1, nburnin=0,
+summary = TRUE, samples = TRUE, nchains=1)
+hist(sample1$samples, main="1000 realisations from N(0,9)",
+ylab="Number of Samples")
+```
+
+Sample from a Binomial distribution
+
+We will pretend that the ‘rbinom()’ R function is not available, and use Nimble (again overkill!)
+to sample 1000 realisations/deviates from a 𝐵𝑖𝑛(10, 0.8) distribution. Use the following code,
+to also obtain a bar-chart of the sample:
+
+```{r}
+# Model
+sim2code <- nimbleCode({
+x ~ dbin(0.8, 10)
+})
+# Build model
+sim2Model <- nimbleModel(sim2code)
+# To compile the model
+Csim2Model <- compileNimble(sim2Model)
+# set up monitoring for x
+sim2ModelConf <- configureMCMC(sim2Model, monitors = c('x'), print = TRUE)
+# build the algorithm
+sim2ModelMCMC <- buildMCMC(sim2ModelConf)
+# compile the sampler
+Csim2ModelMCMC <- compileNimble(sim2ModelMCMC, project = sim2Model)
+set.seed(1)
+sample2 <- runMCMC(Csim2ModelMCMC, niter = 1000, thin=1, nburnin=0,
+summary = TRUE, samples = TRUE, nchains=1)
+# Obtain plot
+plot_sample <- as.vector(table(sample2$samples))
+plot_min <- min(as.integer(names(table(sample2$samples))))
+plot_max <- max(as.integer(names(table(sample2$samples))))
+plot(plot_min:plot_max,plot_sample, type="h",
+main="1000 realisations from Bin(10,0.8)",
+xlab="Sampled value", ylab="Number of Samples")
+```
+
+Exercise
+
+
+Plotting the samples, use Nimble to sample 1000 realisations from a
+1. 𝑃 𝑜𝑖𝑠𝑠𝑜𝑛(3) distribution,
+2. 𝐺𝑎𝑚𝑚𝑎(2, 3) distribution.
+
+
+
+Hint: In the code provided above, the only important change to make is to the distribution
+specified within the specification of the model. Use the Nimble manual (available in the Nimble
+website mentioned above) to see how different distributions can be specified.
+
+```{r}
+# Model
+sim2code <- nimbleCode({
+x ~ dpois(3)
+})
+# Build model
+sim2Model <- nimbleModel(sim2code)
+# To compile the model
+Csim2Model <- compileNimble(sim2Model)
+# set up monitoring for x
+sim2ModelConf <- configureMCMC(sim2Model, monitors = c('x'), print = TRUE)
+# build the algorithm
+sim2ModelMCMC <- buildMCMC(sim2ModelConf)
+# compile the sampler
+Csim2ModelMCMC <- compileNimble(sim2ModelMCMC, project = sim2Model)
+set.seed(1)
+sample2 <- runMCMC(Csim2ModelMCMC, niter = 1000, thin=1, nburnin=0,
+summary = TRUE, samples = TRUE, nchains=1)
+#Obtain plot
+plot_sample <- as.vector(table(sample2$samples))
+# plot_min <- min(as.integer(names(table(sample2$samples))))
+# plot_max <- max(as.integer(names(table(sample2$samples))))
+plot(plot_sample, type="h",
+main="1000 realisations from Pois(10,0.8)",
+xlab="Sampled value", ylab="Number of Samples")
+
+plot_sample
+```
+
+```{r}
+# Model
+sim2code <- nimbleCode({
+x ~ dgamma(2, 3)
+})
+# Build model
+sim2Model <- nimbleModel(sim2code)
+# To compile the model
+Csim2Model <- compileNimble(sim2Model)
+# set up monitoring for x
+sim2ModelConf <- configureMCMC(sim2Model, monitors = c('x'), print = TRUE)
+# build the algorithm
+sim2ModelMCMC <- buildMCMC(sim2ModelConf)
+# compile the sampler
+Csim2ModelMCMC <- compileNimble(sim2ModelMCMC, project = sim2Model)
+set.seed(1)
+sample2 <- runMCMC(Csim2ModelMCMC, niter = 1000, thin=1, nburnin=10,
+summary = TRUE, samples = TRUE, nchains=1)
+#Obtain plot
+# plot_sample <- as.vector(table(sample2$samples))
+# # plot_min <- min(as.integer(names(table(sample2$samples))))
+# # plot_max <- max(as.integer(names(table(sample2$samples))))
+# plot(plot_sample, type="h",
+# main="1000 realisations from Gamma(2, 3)",
+# xlab="Sampled value", ylab="Number of Samples")
+# 
+# plot_sample
+
+hist(sample2$samples)
+```
+
