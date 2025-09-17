@@ -1,0 +1,37 @@
+---
+title: "MT4571: Applied Bayes Notes"
+format: pdf
+editor: source
+---
+
+## Chapter 1
+
+from notes example with exponential data, gamma prior, gamma posterior
+```{r}
+post_mean <- 7/(6.6)
+CI_left_bound <- qgamma(0.025,7,6.6)
+CI_right_bound <- qgamma(0.975,7,6.6)
+cat("The posterior mean is ", post_mean)
+```
+```{r}
+cat("The 95% CI is (", CI_left_bound, ",", CI_right_bound, ")" )
+```
+
+```{r}
+# Alternative approach through random sampling
+sample_from_posterior <- rgamma(100000,7,6.6)
+post_mean_sample <- mean(sample_from_posterior)
+CI_left_bound_sample <- quantile(sample_from_posterior, 0.025)
+CI_right_bound_sample <- quantile(sample_from_posterior, 0.975)
+cat("The posterior mean from the random sample from the posterior is ", post_mean_sample)
+```
+
+```{r}
+cat("The 95% CI from the random sample is (", CI_left_bound_sample, ",", CI_right_bound_sample, ")" )
+```
+
+
+
+
+
+

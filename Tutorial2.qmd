@@ -1,0 +1,86 @@
+---
+title: "MT4571: Tutorial 2 - Analytical posterior derivations"
+format: html
+editor: visual
+---
+
+## Aims of Tutorial 2
+
+Tutorial 2 is not assessed. It aims to help you practice analytical derivations of posterior distributions. It will also be used to practice answering Moodle quiz questions.
+
+## Tutorial 2 Moodle Quiz
+
+Although the tutorial is not assessed, answer questions b(i), b(ii), c(i), c(ii), d, e(i), e(ii), e(iii), e(iv), e(v), using the corresponding Moodle quiz. (Attempt to also answer the other questions outside the Quiz!) The Quiz will open on Thursday 18/9 at 9am and close on Monday 21/9 at 12noon.
+
+## Question
+
+Consider the production of smart watches at a certain facility. It is assumed there is a probability $p$ of producing a faulty watch. For watch $i$, producing a faulty one is denoted by $X_i=1$, otherwise $X_i=0$. A quality controller examines $n$ randomly selected watches, noting the $x_1, x_2,...,x_n$ outcomes. We observe $s$ faulty watches in total, i.e.
+
+$$ \sum_{i=1}^{n} x_i = s. $$
+
+We assume that the total number of faults $S$ from $n$ watches follows a Binomial distribution so that (given $p$), $S|p \sim Bin(n,p)$, and the likelihood is,
+
+$$ P(S=s | p) = {{n}\choose{s}} p^s (1-p)^{n-s}. $$
+
+We place a $Beta(a,b)$ prior on $p$, so that,
+
+$$ p(p) = \frac{1}{B(a,b)} p^{a-1} (1-p)^{b-1} \propto p^{a-1} (1-p)^{b-1}, $$
+
+with Beta function $B(a,b)=\int_{0}^{1} z^{a-1} (1-z)^{b-1} dz = \frac{\Gamma (a) \Gamma (b)}{\Gamma (a+b)}$.
+
+Note that $E(p)=\frac{a}{a+b}$ and $Var(p)=\frac{ab}{(a+b)^2(a+b+1)}$.
+
+(a) Derive the posterior distribution $\pi(p|s)$. (It should be a well-known standard distribution.)
+(b) $\pi(p|s) \sim Beta(\sum{s_i}+\alpha, n + \beta - \sum{s_i})$
+
+*For the calculations relevant to the remaining questions (given the known prior and posterior distributions) you may use R (not Nimble) if you prefer.*
+
+(b) Assume that the prior distribution is a flat prior $Beta(1,1)$, i.e. a uniform prior from zero to one. (Prior expectation for $p$ is $0.5$.) Consider the posterior distribution $\pi(p|s)$ if $10$ watches were checked and $1$ was found to be faulty and...
+
+    i\) state the expectation of the posterior (this is also called the posterior mean of $p$) to an accuracy of 3 decimal places.
+    
+    expectation = 0.167
+
+    ii\) state the variance of the posterior (this is also called the posterior variance of $p$) to an accuracy of 3 decimal places.
+    
+    variance = 0.011
+
+    iii\) Using R, plot the prior and posterior distributions together, evaluating the posterior 95% credible interval for the probability $p$.
+    
+```{r}
+x <- seq(0, 1, length = 100)
+
+prior <- dbeta(x, 1, 1)
+post <- dbeta(x, 2, 10)
+
+lower <- qbeta(0.025, 2, 10)
+upper <- qbeta(0.975, 2, 10)
+
+plot(x, prior, type = "l", col = "blue", ylim = c(0, max(prior, post)))
+lines(x, post, col = "red")
+abline(v = lower, col = "red", type = "vertical")
+abline(v = upper, col = "red", type = "vertical")
+```
+    
+
+(c) Assume now that the controller was very negative regarding the quality of the production line of the company and assumed a prior distribution $Beta(20,5)$. (Prior expectation for $p$ is $0.8$) As above, consider the posterior distribution $\pi(p|s)$ if $10$ watches were checked and $1$ was found to be faulty and...
+
+    i\) state the expectation of the posterior, to an accuracy of 3 decimal places.
+
+    ii\) state the variance of the posterior, to an accuracy of 3 decimal places.
+
+    iii\) Using R, plot the prior and posterior distributions together, evaluating the posterior 95% credible interval for the probability $p$.
+
+(d) Briefly comment on the posterior distributions and inferences (as evaluated in (b) and (c) above), and the effect of the prior distribution on them.
+
+(e) Assume now that $1000$ watches were checked, and $100$ were found to be faulty. (Note, this is the same proportion of faulty watches as in (b) and (c) above.)
+
+    i\) For a $Beta(1,1)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
+
+    ii\) For a $Beta(1,1)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
+
+    iii\) For a $Beta(20,5)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
+
+    iv\) For a $Beta(20,5)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
+
+    v\) Briefly comment on the effect of obtaining a large number of observations on the posterior inferences, considering the two prior distributions. (Hint: plotting the priors and posteriors will help.)
