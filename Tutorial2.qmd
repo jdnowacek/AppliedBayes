@@ -38,15 +38,15 @@ Note that $E(p)=\frac{a}{a+b}$ and $Var(p)=\frac{ab}{(a+b)^2(a+b+1)}$.
 (b) Assume that the prior distribution is a flat prior $Beta(1,1)$, i.e. a uniform prior from zero to one. (Prior expectation for $p$ is $0.5$.) Consider the posterior distribution $\pi(p|s)$ if $10$ watches were checked and $1$ was found to be faulty and...
 
     i\) state the expectation of the posterior (this is also called the posterior mean of $p$) to an accuracy of 3 decimal places.
-    
+
     expectation = 0.167
 
     ii\) state the variance of the posterior (this is also called the posterior variance of $p$) to an accuracy of 3 decimal places.
-    
+
     variance = 0.011
 
     iii\) Using R, plot the prior and posterior distributions together, evaluating the posterior 95% credible interval for the probability $p$.
-    
+
 ```{r}
 x <- seq(0, 1, length = 100)
 
@@ -58,29 +58,89 @@ upper <- qbeta(0.975, 2, 10)
 
 plot(x, prior, type = "l", col = "blue", ylim = c(0, max(prior, post)))
 lines(x, post, col = "red")
-abline(v = lower, col = "red", type = "vertical")
-abline(v = upper, col = "red", type = "vertical")
+abline(v = lower, col = "black", type = "vertical")
+abline(v = upper, col = "black", type = "vertical")
 ```
-    
 
 (c) Assume now that the controller was very negative regarding the quality of the production line of the company and assumed a prior distribution $Beta(20,5)$. (Prior expectation for $p$ is $0.8$) As above, consider the posterior distribution $\pi(p|s)$ if $10$ watches were checked and $1$ was found to be faulty and...
 
     i\) state the expectation of the posterior, to an accuracy of 3 decimal places.
 
+    0.600
+
     ii\) state the variance of the posterior, to an accuracy of 3 decimal places.
+
+    0.007
 
     iii\) Using R, plot the prior and posterior distributions together, evaluating the posterior 95% credible interval for the probability $p$.
 
+```{r}
+x <- seq(0, 1, length = 100)
+
+prior <- dbeta(x, 20, 5)
+post <- dbeta(x, 21, 14)
+
+lower <- qbeta(0.025, 21, 14)
+upper <- qbeta(0.975, 21, 14)
+
+plot(x, prior, type = "l", col = "blue", ylim = c(0, max(prior, post)))
+lines(x, post, col = "red")
+abline(v = lower, col = "black", type = "vertical")
+abline(v = upper, col = "black", type = "vertical")
+```
+
 (d) Briefly comment on the posterior distributions and inferences (as evaluated in (b) and (c) above), and the effect of the prior distribution on them.
+
+The posterior distribution is now roughly symmetrical instead of skewed, the prior distribution clearly pulls the posterior towards the prior estimate of 0.8, away from the empirical result of 0.1. Since the prior has low variance, \~ 0.04, it carries a higher weight than our relatively small sample size.
 
 (e) Assume now that $1000$ watches were checked, and $100$ were found to be faulty. (Note, this is the same proportion of faulty watches as in (b) and (c) above.)
 
     i\) For a $Beta(1,1)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
+    
+    0.101
 
     ii\) For a $Beta(1,1)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
+    
+    9.03e^-5
 
     iii\) For a $Beta(20,5)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
+    
+    0.117
 
     iv\) For a $Beta(20,5)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
+    
+    0.000
 
     v\) Briefly comment on the effect of obtaining a large number of observations on the posterior inferences, considering the two prior distributions. (Hint: plotting the priors and posteriors will help.)
+    
+```{r}
+x <- seq(0, 1, length = 100)
+
+prior <- dbeta(x, 1, 1)
+post <- dbeta(x, 101, 901)
+
+lower <- qbeta(0.025, 101, 901)
+upper <- qbeta(0.975, 101, 901)
+
+plot(x, prior, type = "l", col = "blue", ylim = c(0, max(prior, post)))
+lines(x, post, col = "red")
+abline(v = lower, col = "black", type = "vertical")
+abline(v = upper, col = "black", type = "vertical")
+```
+
+```{r}
+x <- seq(0, 1, length = 100)
+
+prior <- dbeta(x, 20, 5)
+post <- dbeta(x, 120, 905)
+
+lower <- qbeta(0.025, 120, 905)
+upper <- qbeta(0.975, 120, 905)
+
+plot(x, prior, type = "l", col = "blue", ylim = c(0, max(prior, post)))
+lines(x, post, col = "red")
+abline(v = lower, col = "black", type = "vertical")
+abline(v = upper, col = "black", type = "vertical")
+```
+
+With a much larger sample size, the posterior has much higher certainty than with low sample size. The prior has far less effect on the posterior than the data when the sample size is so large.  
