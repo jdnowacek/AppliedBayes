@@ -96,23 +96,23 @@ The posterior distribution is now roughly symmetrical instead of skewed, the pri
 (e) Assume now that $1000$ watches were checked, and $100$ were found to be faulty. (Note, this is the same proportion of faulty watches as in (b) and (c) above.)
 
     i\) For a $Beta(1,1)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
-    
+
     0.101
 
     ii\) For a $Beta(1,1)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
-    
-    9.03e^-5
+
+    9.03e\^-5
 
     iii\) For a $Beta(20,5)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
-    
+
     0.117
 
     iv\) For a $Beta(20,5)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
-    
+
     0.000
 
     v\) Briefly comment on the effect of obtaining a large number of observations on the posterior inferences, considering the two prior distributions. (Hint: plotting the priors and posteriors will help.)
-    
+
 ```{r}
 x <- seq(0, 1, length = 100)
 
@@ -143,4 +143,4 @@ abline(v = lower, col = "black", type = "vertical")
 abline(v = upper, col = "black", type = "vertical")
 ```
 
-With a much larger sample size, the posterior has much higher certainty than with low sample size. The prior has far less effect on the posterior than the data when the sample size is so large.  
+With a much larger sample size, the posterior has much higher certainty than with low sample size. The prior has far less effect on the posterior than the data when the sample size is so large. So, the posterior is very closely centered around the data estimate of the parameter.
