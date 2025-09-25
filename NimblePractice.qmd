@@ -1,0 +1,162 @@
+---
+title: "NimblePractice"
+format: html
+---
+
+```{r}
+library(nimble)
+library(coda)
+```
+
+
+```{r}
+# Revisit the first example in Section 1.2.2 of your notes. 
+# X[i] is the waiting time until speaking to a human adviser,
+# i, i=1,...,n. 
+# Exponential likelihood given \lambda. X[i]~Exp(\lambda)
+# 1/lambda is the average waiting time
+# Assume n=6, with \xbar=0.9
+# Gamma prior on \lambda
+
+################################################################
+################################################################
+
+# Specify the statistical model
+ExpGammaCode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    x[i] ~ dexp( lambda)
+  }
+ # to generate values for the average waiting time, given the \lambda samples
+  averagewaitingtime<-1/lambda
+  
+ # Prior specification:
+  lambda~dgamma(c,d) # Gamma prior with known parameters c and d
+  
+})
+```
+
+```{r}
+# Values for some constants in the model
+ExpGammaConsts <- list(N = 6, c=1, d=1.2) # for a prior that is not very informative
+# ExpGammaConsts <- list(N = 6, c=100, d=120) # for a very informative prior
+
+# The data values
+ExpGammaData <- list(x=c(0.7,0.8,0.9,0.9,1.0,1.2))
+
+# For no data at all! Just to see what the prior(s) look like, as a sanity check!
+# ExpGammaData <- list(x=c(NA,NA,NA,NA,NA,NA))
+
+# one set of initial values before building the model                 
+ExpGammaInits <- list(lambda=1)  # missing data are random variables 
+#                                   and need to be initialised too. 
+                                 # Nimble can do this by sampling from the priors. 
+
+# to build the model
+ExpGamma <- nimbleModel(code = ExpGammaCode, name = "ExpGamma", 
+        constants = ExpGammaConsts, data = ExpGammaData, inits<-ExpGammaInits)
+
+# To compile the model
+CExpGamma <- compileNimble(ExpGamma)
+
+# set up the monitored quantities. Default is all of the random quantities
+ExpGammaConf <- configureMCMC(ExpGamma, 
+                    monitors = c('lambda','averagewaitingtime'), print = TRUE) 
+
+# build the MCMC algorithm
+ExpGammaMCMC <- buildMCMC(ExpGammaConf)
+# compile the MCMC chain 
+CExpGammaMCMC <- compileNimble(ExpGammaMCMC, project = ExpGamma)
+```
+
+```{r}
+########################################################################
+####### POSTERIOR SAMPLES AS R MATRICES   ##############################
+########################################################################
+set.seed(10)
+ExpGammaInits <- list(list(lambda = 1), list(lambda = 10))
+# note that number of iterations niter contains the number of burn-in samples
+posterior <- runMCMC(CExpGammaMCMC, niter = 3000, thin=1, nburnin=1000, 
+                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                   inits = ExpGammaInits) 
+```
+
+```{r}
+par(mfrow = c(1, 1))
+plot(posterior$samples$chain1[ , "lambda"], type = "l", xlab = "iteration",
+     ylab = expression(theta))
+lines(posterior$samples$chain2[ , "lambda"], type = "l", xlab = "iteration", col=2, 
+     ylab = expression(theta))
+```
+
+```{r}
+par(mfrow = c(1, 1))
+# plot autocorrelation of lambda sample - chain 1
+acf(posterior$samples$chain1[, "lambda"]) 
+```
+
+```{r}
+par(mfrow = c(1, 1))
+# plot autocorrelation of lambda sample - chain 2
+acf(posterior$samples$chain2[, "lambda"]) 
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(density(posterior$samples$chain1[ , "lambda"]), type = "l", 
+  xlab = expression(lambda), ylab = "Posterior density", main="Lambda")
+lambda_forplot = seq(0, 3, length=200)
+lines(lambda_forplot, dgamma(lambda_forplot, 1, 1.2), type='l', col="red")
+legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+plot(density(posterior$samples$chain1[ , "averagewaitingtime"]), type = "l", 
+  xlab =  expression(1/lambda), ylab = "Posterior density", main="Average waiting time")
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(10)
+ExpGammaInits <- list(list(lambda = 1), list(lambda = 10))
+posterior <- runMCMC(CExpGammaMCMC, niter = 1000, thin=1, nburnin=100, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = ExpGammaInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+plot(combinedchains)
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchains)
+```
+
+```{r}
+gelman.plot(combinedchains)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+eff_s_s_lambda <- effectiveSize(posterior$samples$chain1[ , "lambda"])
+cat("The effective sample size for lambda for chain1 is ", eff_s_s_lambda)
+```
+
+```{r}
+batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
+```
+
+

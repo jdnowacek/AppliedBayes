@@ -1,0 +1,168 @@
+---
+title: "MT4571: Tutorial 2 - Analytical posterior derivations - SOLUTIONS"
+format: html
+editor: visual
+---
+
+## Aims of Tutorial 2
+
+Tutorial 2 is not assessed. It aims to help you practice analytical derivations of posterior distributions and the evaluation of summaries of the posterior distribution. It will also be used to practice answering Moodle quiz questions.
+
+## Tutorial 2 Moodle Quiz
+
+Although the tutorial is not assessed, answer questions b(i), b(ii), c(i), c(ii), d, e(i), e(ii), e(iii), e(iv), e(v), using the corresponding Moodle quiz. (Attempt to also answer the other questions outside the Quiz!) The Quiz will open on Thursday 18/9 at 9am and close on Monday 21/9 at 12noon.
+
+## Question
+
+Consider the production of smart watches at a certain facility. It is assumed there is a probability $p$ of producing a faulty watch. For watch $i$, producing a faulty one is denoted by $X_i=1$, otherwise $X_i=0$. A quality controller examines $n$ randomly selected watches, noting the $x_1, x_2,...,x_n$ outcomes. We observe $s$ faulty watches in total, i.e.
+
+$$ \sum_{i=1}^{n} x_i = s. $$
+
+We assume that the total number of faults $S$ from $n$ watches follows a Binomial distribution so that (given $p$), $S|p \sim Bin(n,p)$, and the likelihood is,
+
+$$ P(S=s | p) = {{n}\choose{s}} p^s (1-p)^{n-s}. $$
+
+We place a $Beta(a,b)$ prior on $p$, so that,
+
+$$ p(p) = \frac{1}{B(a,b)} p^{a-1} (1-p)^{b-1} \propto p^{a-1} (1-p)^{b-1}, $$
+
+with Beta function $B(a,b)=\int_{0}^{1} z^{a-1} (1-z)^{b-1} dz = \frac{\Gamma (a) \Gamma (b)}{\Gamma (a+b)}$.
+
+Note that $E(p)=\frac{a}{a+b}$ and $Var(p)=\frac{ab}{(a+b)^2(a+b+1)}$.
+
+(a) Derive the posterior distribution $\pi(p|s)$. (It should be a well-known standard distribution.)
+
+Answer to (a):
+
+By Bayes' Theorem, $\pi(p|s) \varpropto f(s|p) p(p) \varpropto p^s (1-p)^{n-s} \times p^{a-1}(1-p)^{b-1}$.
+
+This is equal to $p^{s+a-1}(1-p)^{n-s+b-1}$. This is the curve of a $Beta$ distribution. By inspection, we have that, $$
+p|s \sim Beta(s+a, n-s+b).
+$$ Thus, the Beta distribution is a conjugate prior to the Binomial distribution.
+
+*For the calculations relevant to the remaining questions (given the known prior and posterior distributions) you may use R (not Nimble) if you prefer.*
+
+```{r BetaBinom, eval=TRUE, warning=FALSE}
+#**********************************************************************
+# Simple R code for Beta prior-Binomial likelihood Bayesian analysis
+#**********************************************************************
+prior_to_posterior<- function(priormean,priora,n,x){
+
+# priormean is the mean of the Beta prior
+# priora is the first parameter of the Beta prior (it will define the variance of the prior Beta)
+# n is the number of trials
+# x is the number of successes
+
+priorb=(priora-priora*priormean)/priormean
+
+posteriora=priora+x
+posteriorb=priorb+n-x
+posteriormean=posteriora/(posteriora+posteriorb)
+posteriorvariance=(posteriora*posteriorb)/
+  ((posteriora+posteriorb)^(2)*(posteriora+posteriorb+1))
+left95interval=qbeta(0.025,posteriora,posteriorb)
+right95interval=qbeta(0.975,posteriora,posteriorb)
+
+p_forplot = seq(0, 1, length=100)
+plot(p_forplot, dbeta(p_forplot, posteriora, posteriorb), type='l', main = "Posterior Beta distribution of p", ylab="Density function", ylim=c(0,15), 
+     xlab=paste("Posterior is Beta(", round(posteriora,3),", ",round(posteriorb,3), ")"), sub=paste("Pos. mean=",round(posteriormean,3), 
+     " , Pos. var.=",round(posteriorvariance,3),
+     " , 95% CI=(",round(left95interval,3),",",round(right95interval,3),")"))
+
+lines(p_forplot, dbeta(p_forplot, priora, priorb), type='l', col="red")
+
+legend(0.3, 10.5, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+}
+
+######################################################################
+# To obtain inferences by random sampling, you could try code as below
+######################################################################
+#par(mfrow=c(2,1))
+
+#priorsample=rbeta(10000,priora,priorb)
+#sortsample=sort(priorsample)
+#left95interval=sortsample[250]
+#right95interval=sortsample[9750]
+#plot(density(priorsample), main = "Prior Beta distribution of p", 
+#     xlab=paste("Prior is Beta(", priora,", ",round(priorb,3), ")"), 
+#     sub=paste("Prior mean=",priormean, 
+#     " , 95% cred. int.=(",round(left95interval,3),",",round(right95interval,3),")"#))
+
+#posteriorsample=rbeta(10000,posteriora,posteriorb)
+#posteriormean=round(mean(posteriorsample),3)
+#sortsample=sort(posteriorsample)
+#left95interval=sortsample[250]
+#right95interval=sortsample[9750]
+#plot(density(posteriorsample), main = "Posterior Beta distribution of p", 
+#     xlab=paste("Posterior is Beta(", round(posteriora,3),", ",
+# round(posteriorb,3), #")"), 
+#     sub=paste("Posterior mean=",round(posteriormean,3), 
+#     " , 95% cred. int.=(",round(left95interval,3),",",
+# round(right95interval,3),")"#))
+```
+
+(b) Assume that the prior distribution is a flat prior $Beta(1,1)$, i.e. a uniform prior from zero to one. (Prior expectation for $p$ is $0.5$.) Consider the posterior distribution $\pi(p|s)$ if $10$ watches were checked and $1$ was found to be faulty and...
+
+    i\) state the expectation of the posterior (this is also called the posterior mean of $p$) to an accuracy of 3 decimal places.
+
+```{r Q_b(i)_b(ii)_b(iii), eval=TRUE, warning=FALSE}
+   prior_to_posterior(0.5,1,10,1) 
+```
+
+ii\) state the variance of the posterior (this is also called the posterior variance of $p$) to an accuracy of 3 decimal places.
+
+Answer: See output above.
+
+iii\) Using R, plot the prior and posterior distributions together, evaluating the posterior 95% credible interval for the probability $p$.
+
+Answer: See output above.
+
+(c) Assume now that the controller was quite negative regarding the quality of the production line of the company and assumed a prior distribution $Beta(20,5)$. (Prior expectation for $p$ is $20/25=0.8$) As above, consider the posterior distribution $\pi(p|s)$ if $10$ watches were checked and $1$ was found to be faulty and...
+
+    i\) state the expectation of the posterior, to an accuracy of 3 decimal places.
+
+```{r Q_c(i)_c(ii)_c(iii), eval=TRUE, warning=FALSE}
+   prior_to_posterior(0.8,20,10,1) 
+```
+
+ii\) state the variance of the posterior, to an accuracy of 3 decimal places.
+
+Answer: See output above.
+
+iii\) Using R, plot the prior and posterior distributions together, evaluating the posterior 95% credible interval for the probability $p$.
+
+Answer: See output above.
+
+(d) Briefly comment on the posterior distributions and inferences (as evaluated in (b) and (c) above), and the effect of the prior distribution on them.
+
+Answer: When the prior distribution was flat/non-informative, the posterior distribution and inferences were driven by the data, where the observed frequency of faulty items was 0.1. The posterior expectation for the probability of a faulty watch was 0.167, with 95% probability that the true value lies between 0.023 and 0.413. The credible interval was quite wide because of the small number of observations. When the prior distribution was very informative, posterior inferences were driven by the prior, as the number of observations was small. The posterior expectation for the probability of a faulty watch was 0.6, with 95% probability that the true value lies between 0.436 and 0.754.
+
+\[ To report inferences to someone with no knowledge of statistics, one can use expressions such as the following: We estimate the probability of a faulty watch to be 16%. We are 95% certain that the probability of observing a faulty watch is between 2.3% and 41%.\]
+
+(e) Assume now that $1000$ watches were checked, and $100$ were found to be faulty. (Note, this is the same proportion of faulty watches as in (b) and (c) above.)
+
+    i\) For a $Beta(1,1)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
+
+```{r Q_e(i)_e(ii), eval=TRUE, warning=FALSE}
+   prior_to_posterior(0.5,1,1000,100) 
+```
+
+ii\) For a $Beta(1,1)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
+
+Answer: See output above. Note that reporting zero variance is not correct, as this is a degenerate case where the parameter is not a random variable anymore. It is better to report that the variance is less than 0.001. For the purposes of the Moodle quizz, answering 0 is accepted.
+
+iii\) For a $Beta(20,5)$ prior for $p$, state the expectation of the posterior to an accuracy of 3 decimal places.
+
+```{r Q_e(iii)_e(iv), eval=TRUE, warning=FALSE}
+   prior_to_posterior(0.8,20,1000,100) 
+```
+
+iv\) For a $Beta(20,5)$ prior for $p$, state the variance of the posterior to an accuracy of 3 decimal places.
+
+Answer: See output above. Note that reporting zero variance is not correct, as this is a degenerate case where the parameter is not a random variable anymore. It is better to report that the variance is less than 0.001. For the purposes of the Moodle quizz, answering 0 is accepted.
+
+v\) Briefly comment on the effect of obtaining a large number of observations on the posterior inferences, considering the two prior distributions.
+
+Answer: The large number of observations swamped the prior beliefs, even when the prior distribution was very informative, producing very similar posterior inferences. (Hint: plotting the priors and posteriors will help.)
