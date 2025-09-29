@@ -1,0 +1,450 @@
+---
+title: "Tutorial3"
+format: html
+editor: source
+---
+
+# Admin
+
+```{r}
+library(tidyverse)
+library(nimble)
+library(coda)
+```
+
+Assessed Tutorial 3 Tutorial 3 is assessed. The assessed questions (not all are assessed!) should be answered within the corresponding Moodle Quiz, by Wednesday 1 October, 2pm.
+
+The tutorial aims to help you practice producing posterior distributions and summaries using Nimble, and assess the convergence of MCMC algorithms.
+
+Tutorial 3 Moodle Quiz
+
+Answer questions b(i), b(ii), b(iii), b(iv), b(v), b(viii), c(i), c(ii), c(iv), c(vi), using the corresponding Moodle quiz. There are 12 marks overall.
+
+The Quiz will open on Friday 26 September at 9am and close on Wednesday 1 October at 2pm. Note that the quiz only allows 1 final submitted attempt, So, you should only press the Submit all and finish button once. You can revise your answers, but not after you have pressed this button!
+
+Note also that attempts that have not been submitted before the deadline, will be automatically submitted on Wednesday 1 October at 2pm.
+
+# EDA
+
+The data
+
+Consider birth weight data 𝑤 = (𝑤1, ..., 𝑤200), in Kg, from 200 births at Hospital H. The data are given in the R workspace file Birth_weights_Tutorial_3 in the Tutorials folder in Moodle. The data file also contains binary information on the Index of Multiple Deprivation (IMD) of the mother. 0 denotes high deprivation (index from 1 to 5), while 1 denotes low deprivation (index from 6 to 10). Note the counter-intuitive interpretation of the IMD values on the scale from 1 to 10, and subsequently on the binary scale.
+
+```{r, message=FALSE}
+load("~/Documents/St. Andrews/Bayes/AppliedBayes/Birth_weights_Tutorial_3.RData")
+
+d <- as.data.frame(birth_weights) |>
+  mutate(j = seq(1, length(birth_weights), 1))
+
+d2 <- as.data.frame(IMD_binary)|>
+  mutate(j = seq(1, length(IMD_binary), 1))
+
+d <- left_join(d, d2) |>
+  mutate(bw = birth_weights,
+         imd = IMD_binary,
+         imd_plot = ifelse(imd == 1, "Low", "High")) |>
+  select(-c(j, birth_weights, IMD_binary))
+
+remove(d2, birth_weights, IMD_binary)
+```
+
+i)  Plot the data, both ignoring and taking into account the IMD variable.
+
+```{r}
+d |>
+  ggplot(aes(x = bw)) + 
+  geom_histogram(binwidth = 0.25) +
+  theme_bw() +
+  labs(x = "Birth Weights", y = "Frequency")
+```
+
+```{r}
+d |>
+  ggplot(aes(x = bw)) +
+  geom_histogram(binwidth = 0.25) +
+  # coord_flip() +
+  facet_grid(~ imd_plot) +
+  theme_bw() +
+  scale_y_continuous(breaks = NULL) +
+  labs(y = "", x = "Birth Weight (Kg)")
+```
+
+ii) What is the sample mean of the 200 birth weights?
+
+```{r}
+m <- mean(d$bw)
+
+paste0("The mean birth weight in the sample is ", round(m, 3), " kilograms.")
+```
+
+iii) What is the sample variance of the 200 observations?
+
+```{r}
+v <- var(d$bw)
+
+paste0("The variance of the sample birth weight is ", round(v, 3), " kilograms.")
+```
+
+iv) What is the sample mean of the high-deprivation birth weights?
+
+```{r}
+m_hd <- mean(d$bw[d$imd == 0])
+
+paste0("The mean birth weight in the high-deprivation sample is ", round(m_hd, 3), " kilograms.")
+```
+
+v)  What is the sample mean of the low-deprivation birth weights?
+
+```{r}
+m_ld <- mean(d$bw[d$imd == 1])
+
+paste0("The mean birth weight in the low-deprivation sample is ", round(m_ld, 3), " kilograms.")
+```
+
+# Analysis
+
+```{r}
+# Revisit the first example in Section 1.2.2 of your notes. 
+# X[i] is the waiting time until speaking to a human adviser,
+# i, i=1,...,n. 
+# Exponential likelihood given \lambda. X[i]~Exp(\lambda)
+# 1/lambda is the average waiting time
+# Assume n=6, with \xbar=0.9
+# Gamma prior on \lambda
+
+################################################################
+################################################################
+
+# Specify the statistical model
+Ncode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    x[i] ~ dnorm(mu, tau)
+  }
+ # to generate values for the average waiting time, given the \lambda samples
+  # averagewaitingtime<-1/lambda
+  
+  prior_mu <- 3
+  prior_var <- 4
+  prior_precision <- 1/prior_var
+  
+  prior_tau_a <- 0.1
+  prior_tau_b <- 0.1
+  
+ # Prior specification:
+  mu ~ dnorm(prior_mu, prior_precision) # Gamma prior with known parameters c and d
+  
+  tau ~ dgamma(prior_tau_a, prior_tau_b)
+})
+```
+
+```{r}
+# Values for some constants in the model
+N_constants <- list(N = 200) # for a prior that is not very informative
+# ExpGammaConsts <- list(N = 6, c=100, d=120) # for a very informative prior
+
+# The data values
+N_data <- list(x=d$bw)
+
+# For no data at all! Just to see what the prior(s) look like, as a sanity check!
+# ExpGammaData <- list(x=c(NA,NA,NA,NA,NA,NA))
+
+# one set of initial values before building the model                 
+initials <- list(mu=1, tau = 0.5)  # missing data are random variables 
+#                                   and need to be initialised too. 
+                                 # Nimble can do this by sampling from the priors. 
+
+# to build the model
+Nmod <- nimbleModel(code = Ncode, name = "Nmod", 
+        constants = N_constants, data = N_data, inits<-initials)
+
+# To compile the model
+CNmod <- compileNimble(Nmod)
+
+# set up the monitored quantities. Default is all of the random quantities
+NmodConf <- configureMCMC(Nmod, 
+                    monitors = c('mu',"tau"), print = TRUE) 
+
+# build the MCMC algorithm
+NmodMCMC <- buildMCMC(NmodConf)
+# compile the MCMC chain 
+CNmodMCMC <- compileNimble(NmodMCMC, project = Nmod)
+```
+
+```{r}
+########################################################################
+####### POSTERIOR SAMPLES AS R MATRICES   ##############################
+########################################################################
+set.seed(10)
+NmodInits <- list(list(mu = 1, tau = 0.5), list(mu = 10, tau = 2))
+# note that number of iterations niter contains the number of burn-in samples
+posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000, 
+                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                   inits = NmodInits) 
+```
+
+```{r}
+par(mfrow = c(1, 1))
+plot(posterior$samples$chain1[ , "mu"], type = "l", xlab = "iteration",
+     ylab = expression(mu))
+lines(posterior$samples$chain2[ , "mu"], type = "l", xlab = "iteration", col=2, 
+     ylab = expression(mu))
+```
+
+```{r}
+par(mfrow = c(1, 1))
+plot(posterior$samples$chain1[ , "tau"], type = "l", xlab = "iteration",
+     ylab = expression(tau))
+lines(posterior$samples$chain2[ , "tau"], type = "l", xlab = "iteration", col=2, 
+     ylab = expression(tau))
+```
+
+
+```{r}
+par(mfrow = c(2, 2))
+# plot autocorrelation of lambda sample - chain 1
+acf(posterior$samples$chain1[, "mu"]) 
+
+acf(posterior$samples$chain2[, "mu"]) 
+
+acf(posterior$samples$chain1[, "tau"]) 
+
+acf(posterior$samples$chain2[, "tau"]) 
+```
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(density(posterior$samples$chain1[ , "mu"]), type = "l", 
+  xlab = expression(mu), ylab = "Posterior density", main="Mu")
+
+mu_forplot = seq(0, 4, length=200)
+
+lines(mu_forplot, dnorm(mu_forplot, 3, 0.25), type='l', col="red")
+
+legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior$samples$chain2[ , "mu"]), type = "l", 
+  xlab = expression(mu), ylab = "Posterior density", main="Mu")
+
+mu_forplot = seq(0, 4, length=200)
+
+lines(mu_forplot, dnorm(mu_forplot, 3, 0.25), type='l', col="red")
+
+legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(density(posterior$samples$chain1[ , "tau"]), type = "l", 
+  xlab = expression(tau), ylab = "Posterior density", main="Tau")
+
+tau_forplot = seq(0, 4, length=200)
+
+lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
+
+legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior$samples$chain2[ , "tau"]), type = "l", 
+  xlab = expression(tau), ylab = "Posterior density", main="Tau")
+
+tau_forplot = seq(0, 4, length=200)
+
+lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
+
+legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(10)
+NmodInits <- list(list(mu = 1, tau = 0.5), list(mu = 10, tau = 2))
+# note that number of iterations niter contains the number of burn-in samples
+posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000, 
+                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                   samplesAsCodaMCMC = TRUE,inits = NmodInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+plot(combinedchains)
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchains)
+```
+
+```{r}
+gelman.plot(combinedchains)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+eff_s_s_mu <- effectiveSize(posterior$samples$chain1[ , "mu"])
+cat("The effective sample size for mu for chain1 is",eff_s_s_mu)
+```
+```{r}
+eff_s_s_tau <- effectiveSize(posterior$samples$chain1[ , "tau"])
+cat("The effective sample size for tau for chain1 is",eff_s_s_tau)
+```
+
+```{r}
+batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
+```
+
+
+
+
+# Part C
+
+From Prof: set up a model here with two mean parameters, one which is the mean of the high deprevation group, the other is the difference between the two means
+
+```{r}
+# Revisit the first example in Section 1.2.2 of your notes. 
+# X[i] is the waiting time until speaking to a human adviser,
+# i, i=1,...,n. 
+# Exponential likelihood given \lambda. X[i]~Exp(\lambda)
+# 1/lambda is the average waiting time
+# Assume n=6, with \xbar=0.9
+# Gamma prior on \lambda
+
+################################################################
+################################################################
+
+# Specify the statistical model
+Ncode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    # x[i] ~ dnorm((imd[i]-1)*(-mu1) + (diff+mu1)*imd[i], tau)
+    x[i] ~ dnorm(mu1 + diff * imd[i], tau)
+  }
+  
+
+  #### 
+  
+  #Does this model then treat mu1 as a constant when imd[i] = 1? how does it estimate the diff parameter if it comes first in the dataset/early in the dataset. Under the hood question
+  
+  ####
+  
+  prior_mu <- 3
+  prior_var <- 4
+  prior_precision <- 1/prior_var
+  
+  prior_tau_a <- 0.1
+  prior_tau_b <- 0.1
+  
+ # Prior specification:
+  mu1 ~ dnorm(prior_mu, prior_precision) # Gamma prior with known parameters c and d
+  
+  diff ~ dnorm(prior_mu, prior_precision)
+  
+  tau ~ dgamma(prior_tau_a, prior_tau_b)
+})
+```
+
+```{r}
+# Values for some constants in the model
+N_constants <- list(N = 200) # for a prior that is not very informative
+# ExpGammaConsts <- list(N = 6, c=100, d=120) # for a very informative prior
+
+# The data values
+N_data <- list(x = d$bw, imd = d$imd)
+
+# For no data at all! Just to see what the prior(s) look like, as a sanity check!
+# ExpGammaData <- list(x=c(NA,NA,NA,NA,NA,NA))
+
+# one set of initial values before building the model                 
+initials <- list(mu1 = 1, diff = 0.5, tau = 0.5)  # missing data are random variables 
+#                                   and need to be initialised too. 
+                                 # Nimble can do this by sampling from the priors. 
+
+# to build the model
+Nmod <- nimbleModel(code = Ncode, name = "Nmod", 
+        constants = N_constants, data = N_data, inits<-initials)
+
+# To compile the model
+CNmod <- compileNimble(Nmod)
+
+# set up the monitored quantities. Default is all of the random quantities
+NmodConf <- configureMCMC(Nmod, 
+                    monitors = c('mu1', 'diff', "tau"), print = TRUE) 
+
+# build the MCMC algorithm
+NmodMCMC <- buildMCMC(NmodConf)
+# compile the MCMC chain 
+CNmodMCMC <- compileNimble(NmodMCMC, project = Nmod)
+```
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(10)
+NmodInits <- list(list(mu1 = 3, diff = 0.3, tau = 1.8), list(mu1 = 3, diff = 0.3, tau = 1.8))
+# note that number of iterations niter contains the number of burn-in samples
+posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000, 
+                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                   samplesAsCodaMCMC = TRUE,inits = NmodInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+
+png("combinedchains.png", width = 1200, height = 800)
+plot(combinedchains)
+dev.off()
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchains)
+```
+
+```{r}
+gelman.plot(combinedchains)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+eff_s_s_mu1 <- effectiveSize(posterior$samples$chain1[ , "mu1"])
+cat("The effective sample size for mu for chain1 is",eff_s_s_mu1)
+```
+
+```{r}
+eff_s_s_diff <- effectiveSize(posterior$samples$chain1[ , "diff"])
+cat("The effective sample size for the difference in means for chain1 is",eff_s_s_diff)
+```
+
+```{r}
+eff_s_s_tau <- effectiveSize(posterior$samples$chain1[ , "tau"])
+cat("The effective sample size for tau for chain1 is",eff_s_s_tau)
+```
+
+```{r}
+batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
+```
