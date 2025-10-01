@@ -6,7 +6,7 @@ editor: source
 
 # Admin
 
-```{r}
+```{r, message= F}
 library(tidyverse)
 library(nimble)
 library(coda)
@@ -24,7 +24,7 @@ The Quiz will open on Friday 26 September at 9am and close on Wednesday 1 Octobe
 
 Note also that attempts that have not been submitted before the deadline, will be automatically submitted on Wednesday 1 October at 2pm.
 
-# EDA
+# Part A
 
 The data
 
@@ -101,17 +101,9 @@ m_ld <- mean(d$bw[d$imd == 1])
 paste0("The mean birth weight in the low-deprivation sample is ", round(m_ld, 3), " kilograms.")
 ```
 
-# Analysis
+# Part B
 
 ```{r}
-# Revisit the first example in Section 1.2.2 of your notes. 
-# X[i] is the waiting time until speaking to a human adviser,
-# i, i=1,...,n. 
-# Exponential likelihood given \lambda. X[i]~Exp(\lambda)
-# 1/lambda is the average waiting time
-# Assume n=6, with \xbar=0.9
-# Gamma prior on \lambda
-
 ################################################################
 ################################################################
 
@@ -172,100 +164,6 @@ NmodMCMC <- buildMCMC(NmodConf)
 CNmodMCMC <- compileNimble(NmodMCMC, project = Nmod)
 ```
 
-```{r}
-########################################################################
-####### POSTERIOR SAMPLES AS R MATRICES   ##############################
-########################################################################
-set.seed(10)
-NmodInits <- list(list(mu = 1, tau = 0.5), list(mu = 10, tau = 2))
-# note that number of iterations niter contains the number of burn-in samples
-posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000, 
-                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
-                   inits = NmodInits) 
-```
-
-```{r}
-par(mfrow = c(1, 1))
-plot(posterior$samples$chain1[ , "mu"], type = "l", xlab = "iteration",
-     ylab = expression(mu))
-lines(posterior$samples$chain2[ , "mu"], type = "l", xlab = "iteration", col=2, 
-     ylab = expression(mu))
-```
-
-```{r}
-par(mfrow = c(1, 1))
-plot(posterior$samples$chain1[ , "tau"], type = "l", xlab = "iteration",
-     ylab = expression(tau))
-lines(posterior$samples$chain2[ , "tau"], type = "l", xlab = "iteration", col=2, 
-     ylab = expression(tau))
-```
-
-
-```{r}
-par(mfrow = c(2, 2))
-# plot autocorrelation of lambda sample - chain 1
-acf(posterior$samples$chain1[, "mu"]) 
-
-acf(posterior$samples$chain2[, "mu"]) 
-
-acf(posterior$samples$chain1[, "tau"]) 
-
-acf(posterior$samples$chain2[, "tau"]) 
-```
-
-```{r}
-par(mfrow = c(1, 2))
-
-plot(density(posterior$samples$chain1[ , "mu"]), type = "l", 
-  xlab = expression(mu), ylab = "Posterior density", main="Mu")
-
-mu_forplot = seq(0, 4, length=200)
-
-lines(mu_forplot, dnorm(mu_forplot, 3, 0.25), type='l', col="red")
-
-legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
-        lty = c(1,1), cex=0.5)
-
-
-plot(density(posterior$samples$chain2[ , "mu"]), type = "l", 
-  xlab = expression(mu), ylab = "Posterior density", main="Mu")
-
-mu_forplot = seq(0, 4, length=200)
-
-lines(mu_forplot, dnorm(mu_forplot, 3, 0.25), type='l', col="red")
-
-legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
-        lty = c(1,1), cex=0.5)
-```
-
-```{r}
-par(mfrow = c(1, 2))
-
-plot(density(posterior$samples$chain1[ , "tau"]), type = "l", 
-  xlab = expression(tau), ylab = "Posterior density", main="Tau")
-
-tau_forplot = seq(0, 4, length=200)
-
-lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
-
-legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
-        lty = c(1,1), cex=0.5)
-
-
-plot(density(posterior$samples$chain2[ , "tau"]), type = "l", 
-  xlab = expression(tau), ylab = "Posterior density", main="Tau")
-
-tau_forplot = seq(0, 4, length=200)
-
-lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
-
-legend(2, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
-        lty = c(1,1), cex=0.5)
-```
-
-```{r}
-posterior$summary$all.chains
-```
 
 ```{r}
 ####################################################################################
@@ -274,18 +172,57 @@ posterior$summary$all.chains
 set.seed(10)
 NmodInits <- list(list(mu = 1, tau = 0.5), list(mu = 10, tau = 2))
 # note that number of iterations niter contains the number of burn-in samples
-posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000, 
-                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
-                   samplesAsCodaMCMC = TRUE,inits = NmodInits) 
+posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000,
+                   summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2,
+                   samplesAsCodaMCMC = TRUE,inits = NmodInits)
 
-combinedchains <- mcmc.list(posterior$samples$chain1, 
+combinedchains <- mcmc.list(posterior$samples$chain1,
                             posterior$samples$chain2)
-plot(combinedchains)
-
-autocorr.plot(posterior$samples$chain1)
-
-autocorr.plot(posterior$samples$chain2)
+# plot(combinedchains)
 ```
+i) State the Monte Carlo error for 𝜇. [1 mark]
+
+```{r}
+round(batchSE(posterior$samples$chain1,batchSize=100), 5)
+```
+
+This output shows that the Monte Carlo error for mu is 0.00052.
+
+ii) State the Effective Sample Size for 𝜎[1 mark]
+
+```{r}
+eff_s_s_mu <- effectiveSize(posterior$samples$chain1[ , "mu"])
+cat("The effective sample size for mu for Chain 1 is",eff_s_s_mu)
+```
+
+```{r}
+eff_s_s_tau <- effectiveSize(posterior$samples$chain1[ , "tau"])
+cat("The effective sample size for tau for Chain 1 is",eff_s_s_tau)
+```
+
+These outputs show the effective sample sizes for both parameters, the effective sample size for tau is 8925.751. 
+
+iii) At least one of the autocorrelation plots provides some cause for concern. Is this statement
+true or false? [1 mark]
+
+
+```{r}
+autocorr.plot(posterior$samples$chain1)
+```
+Neither of these plots show concerning autocorrelation among the samples in chain 1.
+
+
+```{r}
+autocorr.plot(posterior$samples$chain2)
+
+```
+
+Neither of these plots show concerning autocorrelation among the samples in chain 2.
+
+So, the statement that at least one of the autocorrelation plots provides some cause for concern is not correct.
+
+iv) The BGR diagnostics provide cause for concern. Is this statement true or false? [1 mark]
+
 
 ```{r}
 gelman.diag(combinedchains)
@@ -295,57 +232,94 @@ gelman.diag(combinedchains)
 gelman.plot(combinedchains)
 ```
 
+It appears that our chain length is not sufficient for the tau estimation chain to fully converge based on the between and within variances of the chains. The chains for mu do seem to have converged.
+
+So, yes, the BGR diagnostics do provide cause for concern.
+
+v) State the posterior mean for 𝜇 to an accuracy of 3 decimal places. [1 mark]
+vi) State the posterior mean for 𝜎to an accuracy of 3 decimal places.
+
 ```{r}
-posterior$summary$all.chains
+b_summary <- as.data.frame(posterior$summary$all.chains)
+
+paste0("The posterior mean birth weight of the entire sample is ", round(b_summary$Mean[1], 3), " kilograms.")
+
+paste0("The posterior variance in birth weight of the entire sample is ", signif(b_summary$Mean[2], 3), "0", " kilograms.")
+
+# had to put the 0 in a character string because the default for the round function is to take a rounded value of 1.790 and only print 1.79.
+```
+
+vii) Using R, and for each parameter, plot the prior and posterior distributions together.
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(density(posterior$samples$chain1[ , "mu"]), type = "l", 
+  xlab = expression(mu), ylab = "Posterior density", main="Mu Chain 1", xlim = c(2, 4))
+
+mu_forplot = seq(2, 4, length=200)
+
+lines(mu_forplot, dnorm(mu_forplot, 3, 0.25), type='l', col="red")
+
+legend(2, 4, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior$samples$chain2[ , "mu"]), type = "l", 
+  xlab = expression(mu), ylab = "Posterior density", main="Mu Chain 2", , xlim = c(2, 4))
+
+mu_forplot = seq(2, 4, length=200)
+
+lines(mu_forplot, dnorm(mu_forplot, 3, 0.25), type='l', col="red")
+
+legend(2, 4, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
 ```
 
 ```{r}
-eff_s_s_mu <- effectiveSize(posterior$samples$chain1[ , "mu"])
-cat("The effective sample size for mu for chain1 is",eff_s_s_mu)
+par(mfrow = c(1, 2))
+
+plot(density(posterior$samples$chain1[ , "tau"]), type = "l", 
+  xlab = expression(tau), ylab = "Posterior density", main="Tau Chain 1", xlim = c(0, 3))
+
+tau_forplot = seq(0, 3, length=200)
+
+lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
+
+legend(0.4, 1, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior$samples$chain2[ , "tau"]), type = "l", 
+  xlab = expression(tau), ylab = "Posterior density", main="Tau Chain 2", xlim = c(0, 3))
+
+tau_forplot = seq(0, 3, length=200)
+
+lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
+
+legend(0.4, 1, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
 ```
-```{r}
-eff_s_s_tau <- effectiveSize(posterior$samples$chain1[ , "tau"])
-cat("The effective sample size for tau for chain1 is",eff_s_s_tau)
-```
 
-```{r}
-batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
-```
+viii) Briefly report your inferences regarding the posterior expected birth weight to someone
+with no knowledge of statistics, considering the application at hand. [2 marks]
 
-
-
+Based on our analysis of the birth-weight data, we expect that the mean of the distribution of birth weights of babies born in hospital H to be around 3.255 kilograms. (assuming that our sample was an unbiased random sample of the population of babies born at hospital H). We expect the standard deviation of the distribution of birth weights to be 0.75 This relatively high standard deviation indicates that either we do not have a large enough sample size to make precise estimates, or we may be missing an important consideration in this analysis.
 
 # Part C
 
-From Prof: set up a model here with two mean parameters, one which is the mean of the high deprevation group, the other is the difference between the two means
-
 ```{r}
-# Revisit the first example in Section 1.2.2 of your notes. 
-# X[i] is the waiting time until speaking to a human adviser,
-# i, i=1,...,n. 
-# Exponential likelihood given \lambda. X[i]~Exp(\lambda)
-# 1/lambda is the average waiting time
-# Assume n=6, with \xbar=0.9
-# Gamma prior on \lambda
-
 ################################################################
 ################################################################
 
 # Specify the statistical model
-Ncode <- nimbleCode({
+Ncode_c <- nimbleCode({
   
  # Specify the likelihood:
   for (i in 1:N){
     # x[i] ~ dnorm((imd[i]-1)*(-mu1) + (diff+mu1)*imd[i], tau)
     x[i] ~ dnorm(mu1 + diff * imd[i], tau)
   }
-  
-
-  #### 
-  
-  #Does this model then treat mu1 as a constant when imd[i] = 1? how does it estimate the diff parameter if it comes first in the dataset/early in the dataset. Under the hood question
-  
-  ####
   
   prior_mu <- 3
   prior_var <- 4
@@ -355,9 +329,9 @@ Ncode <- nimbleCode({
   prior_tau_b <- 0.1
   
  # Prior specification:
-  mu1 ~ dnorm(prior_mu, prior_precision) # Gamma prior with known parameters c and d
+  mu1 ~ dnorm(prior_mu, prior_precision) 
   
-  diff ~ dnorm(prior_mu, prior_precision)
+  diff ~ dnorm(0, prior_precision)
   
   tau ~ dgamma(prior_tau_a, prior_tau_b)
 })
@@ -365,58 +339,72 @@ Ncode <- nimbleCode({
 
 ```{r}
 # Values for some constants in the model
-N_constants <- list(N = 200) # for a prior that is not very informative
-# ExpGammaConsts <- list(N = 6, c=100, d=120) # for a very informative prior
+N_constants_c <- list(N = 200) 
 
 # The data values
-N_data <- list(x = d$bw, imd = d$imd)
-
-# For no data at all! Just to see what the prior(s) look like, as a sanity check!
-# ExpGammaData <- list(x=c(NA,NA,NA,NA,NA,NA))
+N_data_c <- list(x = d$bw, imd = d$imd)
 
 # one set of initial values before building the model                 
-initials <- list(mu1 = 1, diff = 0.5, tau = 0.5)  # missing data are random variables 
-#                                   and need to be initialised too. 
-                                 # Nimble can do this by sampling from the priors. 
+initials_c <- list(mu1 = 1, diff = 0.5, tau = 0.5)  
+
+# missing data are random variables and need to be initialised too. 
+ # Nimble can do this by sampling from the priors. 
 
 # to build the model
-Nmod <- nimbleModel(code = Ncode, name = "Nmod", 
-        constants = N_constants, data = N_data, inits<-initials)
+Nmod_c <- nimbleModel(code = Ncode_c, name = "Nmod_c", 
+        constants = N_constants_c, data = N_data_c, inits<-initials_c)
 
 # To compile the model
-CNmod <- compileNimble(Nmod)
+CNmod_c <- compileNimble(Nmod_c)
 
 # set up the monitored quantities. Default is all of the random quantities
-NmodConf <- configureMCMC(Nmod, 
+NmodConf_c <- configureMCMC(Nmod_c, 
                     monitors = c('mu1', 'diff', "tau"), print = TRUE) 
 
 # build the MCMC algorithm
-NmodMCMC <- buildMCMC(NmodConf)
+NmodMCMC_c <- buildMCMC(NmodConf_c)
 # compile the MCMC chain 
-CNmodMCMC <- compileNimble(NmodMCMC, project = Nmod)
+CNmodMCMC_c <- compileNimble(NmodMCMC_c, project = Nmod_c)
 ```
+
 ```{r}
 ####################################################################################
 ####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
 ####################################################################################
 set.seed(10)
-NmodInits <- list(list(mu1 = 3, diff = 0.3, tau = 1.8), list(mu1 = 3, diff = 0.3, tau = 1.8))
+NmodInits_c <- list(list(mu1 = 3, diff = 0.3, tau = 1.8), list(mu1 = 3, diff = 0.3, tau = 1.8))
 # note that number of iterations niter contains the number of burn-in samples
-posterior <- runMCMC(CNmodMCMC, niter = 10000, thin=1, nburnin=1000, 
+posterior_c <- runMCMC(CNmodMCMC_c, niter = 10000, thin=1, nburnin=1000, 
                    summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
-                   samplesAsCodaMCMC = TRUE,inits = NmodInits) 
+                   samplesAsCodaMCMC = TRUE,inits = NmodInits_c) 
 
-combinedchains <- mcmc.list(posterior$samples$chain1, 
-                            posterior$samples$chain2)
+combinedchains <- mcmc.list(posterior_c$samples$chain1, 
+                            posterior_c$samples$chain2)
 
 png("combinedchains.png", width = 1200, height = 800)
 plot(combinedchains)
 dev.off()
-
-autocorr.plot(posterior$samples$chain1)
-
-autocorr.plot(posterior$samples$chain2)
 ```
+
+i) At least one of the autocorrelation plots provides some cause for concern. Is this statement
+True or False? [1 mark]
+
+```{r}
+autocorr.plot(posterior_c$samples$chain1)
+```
+
+For both the mu and diff chains, these autocorrelation plots show that there are issues with autocorreltaion of observations in the mu and diff estimation chains when the lag is less than 5. 
+
+```{r}
+autocorr.plot(posterior_c$samples$chain2)
+```
+
+For both the mu and diff chains, these autocorrelation plots show that there are issues with autocorreltaion of observations in the mu and diff estimation chains when the lag is less than 5.
+
+So, yes, I would say that at least one of the autocorrelation graphs shows cause for some concern.
+
+ii) The BGR diagnostics provide cause for concern. Is this statement True or False? [1
+mark]
 
 ```{r}
 gelman.diag(combinedchains)
@@ -426,25 +414,152 @@ gelman.diag(combinedchains)
 gelman.plot(combinedchains)
 ```
 
+There is nothing concerning in these plots, all chains seem to converge well.
+
+iii) State the posterior expectation for the mean birth weight of the high-deprivation group to
+an accuracy of 2 decimal places.
+
 ```{r}
-posterior$summary$all.chains
+summary_c <- as.data.frame(posterior_c$summary$all.chains)
+
+paste0("The posterior mean birth weight of the high-deprevation group is ", 
+       round(summary_c$Mean[2], 2), "0 kilograms.")
+
+# had to put the 0 in a character string because the default for the round function is to take a rounded value of 3.10 and only print 3.1
+```
+
+iv) State the posterior expectation for the mean birth weight of the low-deprivation group to
+an accuracy of 2 decimal places. [1 mark]
+
+```{r}
+paste0("The posterior variance in birth weight of the low-deprevation group is ", 
+       round(summary_c$Mean[1] + summary_c$Mean[2], 2), " kilograms.")
+```
+
+v) Using R, and for each parameter, plot the prior and posterior distributions together.
+
+```{r}
+  prior_mu <- 3
+  prior_var <- 4
+  prior_precision <- 1/prior_var
+  
+  prior_tau_a <- 0.1
+  prior_tau_b <- 0.1
+  
+ # Prior specification:
+  mu1 ~ dnorm(prior_mu, prior_precision) 
+  
+  diff ~ dnorm(prior_mu, prior_precision)
+  
+  tau ~ dgamma(prior_tau_a, prior_tau_b)
+```
+
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(density(posterior_c$samples$chain1[ , "mu1"]), type = "l", 
+  xlab = expression(mu), ylab = "Posterior density", main="Mu1 Chain 1", xlim = c(2, 4))
+
+mu1_forplot = seq(2, 4, length=200)
+
+lines(mu1_forplot, dnorm(mu1_forplot, prior_mu, prior_precision), type='l', col="red")
+
+legend(2, 2, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior_c$samples$chain2[ , "mu1"]), type = "l", 
+  xlab = expression(mu), ylab = "Posterior density", main="Mu1 Chain 2", xlim = c(2, 4))
+
+mu1_forplot = seq(2, 4, length=200)
+
+lines(mu1_forplot, dnorm(mu1_forplot, prior_mu, prior_precision), type='l', col="red")
+
+legend(2, 2, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
 ```
 
 ```{r}
-eff_s_s_mu1 <- effectiveSize(posterior$samples$chain1[ , "mu1"])
+par(mfrow = c(1, 2))
+
+plot(density(posterior_c$samples$chain1[ , "diff"]), type = "l", 
+  xlab = "Diff", ylab = "Posterior density", main="Diff Chain 1", xlim = c(-1, 4))
+
+diff_forplot = seq(-1, 4, length=200)
+
+lines(diff_forplot, dnorm(diff_forplot, prior_mu, prior_precision), type='l', col="red")
+
+legend(2, 3, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior_c$samples$chain2[ , "diff"]), type = "l", 
+  xlab = "Diff", ylab = "Posterior density", main="Diff Chain 2", xlim = c(-1, 4))
+
+diff_forplot = seq(-1, 4, length=200)
+
+lines(diff_forplot, dnorm(diff_forplot, prior_mu, prior_precision), type='l', col="red")
+
+legend(2, 3, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(density(posterior_c$samples$chain1[ , "tau"]), type = "l", 
+  xlab = expression(tau), ylab = "Posterior density", main="Tau Chain 1", xlim = c(0, 3))
+
+tau_forplot = seq(0, 3, length=200)
+
+lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
+
+legend(0.3, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+
+
+plot(density(posterior_c$samples$chain2[ , "tau"]), type = "l", 
+  xlab = expression(tau), ylab = "Posterior density", main="Tau Chain 2", xlim = c(0, 3))
+
+tau_forplot = seq(0, 3, length=200)
+
+lines(tau_forplot, dgamma(tau_forplot, 0.1, 0.1), type='l', col="red")
+
+legend(0.3, 0.8, legend=c("Prior", "Posterior"),col=c("red", "black"),
+        lty = c(1,1), cex=0.5)
+```
+
+vi) Considering the statistical output, is it preferable to fit a model with only one overall mean
+for the 200 observations, or a model with a different mean for the two deprivation groups?
+Briefly justify your answer. [2 marks]
+
+```{r}
+eff_s_s_mu1 <- effectiveSize(posterior_c$samples$chain1[ , "mu1"])
 cat("The effective sample size for mu for chain1 is",eff_s_s_mu1)
 ```
 
 ```{r}
-eff_s_s_diff <- effectiveSize(posterior$samples$chain1[ , "diff"])
+eff_s_s_diff <- effectiveSize(posterior_c$samples$chain1[ , "diff"])
 cat("The effective sample size for the difference in means for chain1 is",eff_s_s_diff)
 ```
 
 ```{r}
-eff_s_s_tau <- effectiveSize(posterior$samples$chain1[ , "tau"])
+eff_s_s_tau <- effectiveSize(posterior_c$samples$chain1[ , "tau"])
 cat("The effective sample size for tau for chain1 is",eff_s_s_tau)
 ```
 
 ```{r}
-batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
+batchSE(posterior_c$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
 ```
+
+```{r}
+summary_c
+```
+
+```{r}
+b_summary
+```
+
+Based on the required and additional analysis of these data, I think that the approach with two different groups is preferable. While the estimated variance of the sample is slightly higher (lower tau value), and there is no real difference in the values of the standard deviations of the estimates of the parameters in each model, the fact that during exploratory data analysis, we found a clear difference in the means of the high and low deprevation groups, I think that the approach estimating two group means is a more appropriate approach to this problem.
+
