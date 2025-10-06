@@ -1,0 +1,126 @@
+---
+title: "NimbleFramework"
+format: html
+---
+
+# Packages
+
+```{r}
+library(nimble)
+library(coda)
+```
+
+# Data
+
+```{r}
+# read in data
+```
+
+
+# Nimble Model
+
+## Specification
+
+```{r}
+# Specify the statistical model
+ModelCode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    x[i] ~ dexp( lambda) # dist_name(parameter list)
+  }
+  
+ # to generate values for other functions you want to keep track of: 
+ # functions of parameters etc.
+  
+  # theta * 2
+  
+ # Prior specification: parameters from parameter list
+  
+  # param ~ dist_name(prior parameters)
+  
+  # EX: lambda~dgamma(c,d) Gamma prior with known parameters c and d
+  
+})
+```
+
+## Building
+
+```{r}
+# Values for some constants in the model: 
+ModelConsts <- list() # prior parameters, data length, etc. 
+                      # Including N = data length
+
+# The data values
+ModelData <- list() # or a data object
+
+# For a sanity check input NA for all data values, provides a look at parameters
+
+# one set of initial values before building the model                 
+ModelInits <- list()  # initial values for parameters for the start of the chain
+
+# to build the model
+Model <- nimbleModel(code = ModelCode, name = "Model", 
+        constants = ModelConsts, data = ModelData, inits <- ModelInits)
+
+# To compile the model
+CModel <- compileNimble(Model)
+
+# set up the monitored quantities. Default is all of the random quantities
+ModelConf <- configureMCMC(Model, 
+                    monitors = c(), print = TRUE) 
+    
+# inside c(), put parameters and ftns of params specified above
+
+# build the MCMC algorithm
+ModelMCMC <- buildMCMC(ModelConf)
+# compile the MCMC chain 
+CModelMCMC <- compileNimble(ModelMCMC, project = Model)
+```
+
+## Diagnostics
+
+```{r}
+
+################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT FOR EASY PLOTS AND DIAGNOSTICS ########
+################################################################################
+
+set.seed(10)
+
+ModelInits <- list(list(), list()) # two chains, two lists
+
+posterior <- runMCMC(ModelMCMC, niter = 1000, thin=1, nburnin=100, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = ModelInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+plot(combinedchains)
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchains)
+```
+
+```{r}
+gelman.plot(combinedchains)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+eff_s_s_lambda <- effectiveSize(posterior$samples$chain1[ , "lambda"])
+cat("The effective sample size for lambda for chain1 is ", eff_s_s_lambda)
+```
+
+```{r}
+batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
+```
+

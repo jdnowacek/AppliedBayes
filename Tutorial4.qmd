@@ -1,5 +1,488 @@
 ---
-title: "Tutorial4"
-format: html
+title: "MT4571: Tutorial 4 - Missing data - Predictions - SOLUTIONS"
+format: pdf
+editor: visual
 ---
+
+## Tutorial 4
+
+Tutorial 4 is not assessed.
+
+The tutorial aims to help you practice handling missing data and making predictions.
+
+```{r}
+library(tidyverse)
+```
+
+## The data
+
+We continue with the birth weight data $w=(w_1,...,w_{200})$, in Kg, from 200 births at Hospital H. The data are given in the R workspace file `Birth_weights_Tutorial_3` in the Tutorials folder in Moodle. The data file also contains binary information on the Index of Multiple Deprivation (IMD) of the mother. 0 denotes high deprivation (index from 1 to 5), while 1 denotes low deprivation (index from 6 to 10). Note the counter-intuitive interpretation of the IMD values on the scale from 1 to 10, and subsequently on the binary scale.
+
+Depending on which folder you have saved the data, you can load them with a command such as,
+
+```{r read_data2, eval=FALSE}
+load("~/Documents/St. Andrews/Bayes/AppliedBayes/Birth_weights_Tutorial_3.RData")
+
+d <- as.data.frame(birth_weights) |>
+  mutate(j = seq(1, length(birth_weights), 1))
+
+d2 <- as.data.frame(IMD_binary)|>
+  mutate(j = seq(1, length(IMD_binary), 1))
+
+d <- left_join(d, d2) |>
+  mutate(bw = birth_weights,
+         imd = IMD_binary,
+         imd_plot = ifelse(imd == 1, "Low", "High")) |>
+  select(-c(j, birth_weights, IMD_binary))
+
+remove(d2, birth_weights, IMD_binary)
+```
+
+When you specify the model for Nimble, you can specify the data with a command such as,
+
+```{r read_data_for_Nimble, eval=FALSE}
+   # SomeData <- list(SomeDataVariable=bw, SomeOthervar=imd)
+```
+
+## Question 1
+
+We will start by assuming that the birth weights $w_i$, $i=1,...,200$ follow a Normal distribution so that (given $\mu_i$ and $\sigma$), $w_i|\mu_i,\sigma \sim N(\mu,\sigma^2)$, with the weights being independent. Considering the binary IMD variable, we parametrise the mean $\mu_i$ for birth weight $w_i$ so that, $$ \mu_i = \mu_0 + \mu_{diff} * IMD_i,$$ where $\mu_0$ denotes the expected birth weight for a high-deprivation parent, and $\mu_{diff}$ is the difference between the expected birth weight for a high-deprivation parent and the expected birth weight for a low-deprivation parent ($\mu_{diff} = \mu_1 - \mu_0)$.
+
+We place a $Log-Normal(1,0.7^2)$ prior on $\mu_0$. This prior gives positive probability only on values greater than zero, and has a large variance for the application at hand. If $\mu_0$ follows a Log-Normal distribution, then $Log_{e}(\mu_0)$ follows a Normal distribution. **(Find out more on the Log-Normal distribution properties and explore it using `rlnorm(1000, meanlog = , sdlog = ))`. Check also how Nimble parametrises the Log-Normal distribution!)** For the precision $\tau=1/\sigma^2$, we will assume a Gamma prior distribution $G(0.1,0.1)$, so that the prior is not informative. For $\mu_{diff}$ we will assume a Normal prior with mean 0 and variance 1.44, so that $\mu_{diff} \sim N(0,1.2^2)$.
+
+Use Nimble to derive the posterior distribution $\pi(\mu,\sigma^2|w)$. Run 2 chains. Consider a burn-in of 1000 iterations, with 19000 further iterations for each chain. Thin by 1. Obtain plots of the posterior distributions and diagnostic plots and check the MCMC convergence.
+
+```{r Anova_analysis, eval=TRUE, warning=FALSE}
+#**********************************************************************
+# R Nimble code 
+#**********************************************************************
+```
+
+#### Packages
+
+```{r}
+library(nimble)
+library(coda)
+```
+
+#### Data
+
+```{r}
+# mod_data <- list(SomeDataVariable=d$bw, SomeOthervar=d$imd)
+```
+
+### Nimble Model
+
+#### Specification
+
+```{r}
+# Specify the statistical model
+ModelCode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    x[i] ~ dnorm(mu0 + mu_diff * imd[i], tau) # dist_name(parameter list)
+  }
+  
+ # Prior specification: parameters from parameter list
+  
+  mu0 ~ dlnorm(mu0_a, mu0_b)
+  
+  mu_diff ~ dnorm(mu_diff_a, mu_diff_b)
+  
+  tau ~ dgamma(tau_a, tau_b)
+  
+  mu0_a <- 1
+  mu0_b <- 1/(0.7^2)
+  
+  mu_diff_a <- 0
+  mu_diff_b <- 1/(1.2^2)
+  
+  tau_a <- 0.1
+  tau_b <- 0.1
+  
+  # param ~ dist_name(prior parameters)
+  
+  # EX: lambda~dgamma(c,d) Gamma prior with known parameters c and d
+  
+})
+```
+
+#### Building
+
+```{r}
+# Values for some constants in the model: 
+ModelConsts <- list(N = 200) 
+
+#                     mu0_a = 1, 
+#                     mu0_b = 1/(0.7^2), 
+#                     mu_diff_a = 0, 
+#                     mu_diff_b = 1/(1.2^2), 
+#                     tau_a = 0.1,
+#                     tau_b = 0.1
+
+# prior parameters, data length, etc.
+
+# The data values
+ModelData <- list(x = d$bw, imd = d$imd) # or a data object
+
+# For a sanity check input NA for all data values, provides a look at parameters
+
+# one set of initial values before building the model    
+
+ModelInits <- list(mu0 = 0, mu_diff = 0, tau = 0.5)  
+
+# initial values for parameters for the start of the chain
+
+
+# to build the model
+Model <- nimbleModel(code = ModelCode, name = "Model", 
+        constants = ModelConsts, data = ModelData, inits <- ModelInits)
+
+# To compile the model
+CModel <- compileNimble(Model)
+
+# set up the monitored quantities. Default is all of the random quantities
+ModelConf <- configureMCMC(Model, 
+                    monitors = c(), print = TRUE) 
+    
+# inside c(), put parameters and ftns of params specified above
+
+# build the MCMC algorithm
+ModelMCMC <- buildMCMC(ModelConf)
+# compile the MCMC chain 
+CModelMCMC <- compileNimble(ModelMCMC, project = Model)
+```
+
+#### Diagnostics
+
+```{r}
+
+################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT FOR EASY PLOTS AND DIAGNOSTICS ########
+################################################################################
+
+set.seed(10)
+
+# ModelInits <- list(mu0 = 0, mu_diff = 0, tau = 0.5)
+
+ModelInits <- list(list(mu0 = 1, mu_diff = 1, tau = 1.5), 
+                   list(mu0 = 1.5, mu_diff = 1.5, tau = 1.5)) # two chains, two lists
+
+posterior <- runMCMC(CModelMCMC, niter = 1000, thin=1, nburnin=100, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = ModelInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+plot(combinedchains)
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchains)
+```
+
+```{r}
+gelman.plot(combinedchains)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+```{r}
+eff_s_s_mu0 <- effectiveSize(posterior$samples$chain1[ , "mu0"])
+cat("The effective sample size for mu0 for chain1 is ", eff_s_s_mu0)
+```
+
+```{r}
+batchSE(posterior$samples$chain1,batchSize=100) # For MC errors (only one chain is used.)
+```
+
+## Question 2
+
+Assume now that observations $w_{96}$ to $w_{105}$ are missing. Create a new R workspace with 10 'NA' values as described.
+
+```{r read_data_missing, eval=FALSE}
+bw_miss <- d$bw
+bw_miss[96:105] <- c(NA)
+
+d_miss <- d
+
+d_miss$bw <- bw_miss
+```
+
+Nimble is going to be imputing the missing data values in every iteration. In other words, it will be sampling from the posterior predictive distribution of the missing birth weights, at every iteration, after convergence. In this manner, the increased uncertainty due to the missing observations will be propagated naturally to the inferences for the model parameters, as the imputed values will be different at different iterations. Run the analysis and obtain posterior inferences, Monitor also the variable that contains the birth weights, as this now includes random quantities. Notice the interesting, but long/unwieldy output that is created.
+
+```{r Anova_missing, eval=TRUE, warning=FALSE}
+# Specify the statistical model
+ModelCode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    x[i] ~ dnorm(mu0 + mu_diff * imd[i], tau) # dist_name(parameter list)
+  }
+  
+  mu1 <- mu0 + mu_diff
+  
+  # missing_data <- ModelData$x
+  
+ # Prior specification: parameters from parameter list
+  
+  mu0 ~ dlnorm(mu0_a, mu0_b)
+  
+  mu_diff ~ dnorm(mu_diff_a, mu_diff_b)
+  
+  tau ~ dgamma(tau_a, tau_b)
+  
+  mu0_a <- 1
+  mu0_b <- 1/(0.7^2)
+  
+  mu_diff_a <- 0
+  mu_diff_b <- 1/(1.2^2)
+  
+  tau_a <- 0.1
+  tau_b <- 0.1
+  
+  # param ~ dist_name(prior parameters)
+  
+  # EX: lambda~dgamma(c,d) Gamma prior with known parameters c and d
+  
+})
+```
+
+```{r}
+# Values for some constants in the model: 
+ModelConsts <- list(N = 200) 
+
+#                     mu0_a = 1, 
+#                     mu0_b = 1/(0.7^2), 
+#                     mu_diff_a = 0, 
+#                     mu_diff_b = 1/(1.2^2), 
+#                     tau_a = 0.1,
+#                     tau_b = 0.1
+
+# prior parameters, data length, etc.
+
+# The data values
+ModelData <- list(x = d_miss$bw, imd = d_miss$imd) # or a data object
+
+# For a sanity check input NA for all data values, provides a look at parameters
+
+# one set of initial values before building the model    
+
+ModelInits <- list(mu0 = 0, mu_diff = 0, tau = 0.5)  
+
+# initial values for parameters for the start of the chain
+
+
+# to build the model
+Model <- nimbleModel(code = ModelCode, name = "Model", 
+        constants = ModelConsts, data = ModelData, inits <- ModelInits)
+
+# To compile the model
+CModel <- compileNimble(Model)
+
+# set up the monitored quantities. Default is all of the random quantities
+ModelConf <- configureMCMC(CModel, 
+                    monitors = c("mu0", "mu1", "mu_diff",
+                                 "tau", "x[96:105]"), 
+                    print = TRUE) 
+    
+# inside c(), put parameters and ftns of params specified above
+
+# build the MCMC algorithm
+ModelMCMC <- buildMCMC(ModelConf)
+# compile the MCMC chain 
+CModelMCMC <- compileNimble(ModelMCMC, project = Model)
+```
+
+```{r}
+
+################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT FOR EASY PLOTS AND DIAGNOSTICS ########
+################################################################################
+
+set.seed(10)
+
+# ModelInits <- list(mu0 = 0, mu_diff = 0, tau = 0.5)
+
+ModelInits <- list(list(mu0 = 1, mu_diff = 1, tau = 1.5), 
+                   list(mu0 = 1.5, mu_diff = 1.5, tau = 1.5)) # two chains, two lists
+
+posterior <- runMCMC(CModelMCMC, niter = 1000, thin=1, nburnin=100, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = ModelInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+# plot(combinedchains)
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+posterior$summary$all.chains
+```
+
+\[To see clearly the effect of the missing observations, and the propagation of uncertainty. consider also the extreme and unrealistic scenario where observations $w_{6}$ to $w_{195}$ are missing. Repeat the analysis for 190 missing observations. Compare the posterior means and credible intervals for the expected birth weight for the two deprivation groups, under the full data set and with 190 observations missing. You do not have to monitor again the birth weights variable, to avoid creating a long output. Check the effect of the large proportion of missing observations on the convergence diagnostics too!\]
+
+```{r read_data_missing_many, eval=FALSE}
+    load("C:/Users/.../Birth_weights_Tutorial_3.RData")
+    birth_weights[6:195] <- c(NA)
+```
+
+```{r Anova_missing_many, eval=TRUE, warning=FALSE}
+#**********************************************************************
+# R Nimble code for Normal and IG priors - Normal likelihood 
+#**********************************************************************
+```
+
+## Question 3
+
+Now return to the full dataset. You are asked to consider the next birth at the hospital, and predict the birth weight when the parent is classified within the high-deprivation group, and when they are classified in the low-deprivation group. You could do this by treating the random quantities that are relevant to these predictions as missing observations. But this is not an elegant solution. It is more elegant to create two new random quantities for the potential future observations, and then sample from the posterior predictive distribution of them. You do not have to evaluate this distribution. All you have to do is define the new quantities, and how they relate to the model parameters, i.e. what is their distribution given the model parameters. Do this within the `nimbleCode({ })` chunk of code. You can use a command such as, `nextbirth_weight_low ~ dnorm(??,??)`.
+
+Nimble will then sample from the appropriate posterior predictive distribution.
+
+After you obtain inferences for the two potential future observations, compare the credible intervals for them with the credible intervals for the mean birth weight for the two deprivation groups.
+
+Report your inferences on the posterior mean weights for the two groups, and on the two potential future observations. Do so both for a statistical audience and for a lay audience without any knowledge of statistics.
+
+```{r Anova_predict, eval=TRUE, warning=FALSE}
+#**********************************************************************
+# R Nimble code for Normal and IG priors - Normal likelihood 
+#**********************************************************************
+```
+
+
+```{r}
+# Specify the statistical model
+ModelCode <- nimbleCode({
+  
+ # Specify the likelihood:
+  for (i in 1:N){
+    x[i] ~ dnorm(mu0 + mu_diff * imd[i], tau) # dist_name(parameter list)
+    
+  }
+  
+ # Prior specification: parameters from parameter list
+  
+  mu0 ~ dlnorm(mu0_a, mu0_b)
+  
+  mu_diff ~ dnorm(mu_diff_a, mu_diff_b)
+  
+  tau ~ dgamma(tau_a, tau_b)
+  
+  # other values to track
+  
+  mu1 <- mu0 + mu_diff
+  
+  sigma2 <- 1/tau
+  
+  nextbirth_weight_low ~ dnorm(mu0 + mu_diff, tau)
+  nextbirth_weight_high ~ dnorm(mu0, tau)
+  
+  mu0_a <- 1
+  mu0_b <- 1/(0.7^2)
+  
+  mu_diff_a <- 0
+  mu_diff_b <- 1/(1.2^2)
+  
+  tau_a <- 0.1
+  tau_b <- 0.1
+  
+  # param ~ dist_name(prior parameters)
+  
+  # EX: lambda~dgamma(c,d) Gamma prior with known parameters c and d
+  
+})
+```
+
+#### Building
+
+```{r}
+# Values for some constants in the model: 
+ModelConsts <- list(N = 200) 
+
+#                     mu0_a = 1, 
+#                     mu0_b = 1/(0.7^2), 
+#                     mu_diff_a = 0, 
+#                     mu_diff_b = 1/(1.2^2), 
+#                     tau_a = 0.1,
+#                     tau_b = 0.1
+
+# prior parameters, data length, etc.
+
+# The data values
+ModelData <- list(x = d$bw, imd = d$imd) # or a data object
+
+# For a sanity check input NA for all data values, provides a look at parameters
+
+# one set of initial values before building the model    
+
+ModelInits <- list(mu0 = 0, mu_diff = 0, tau = 0.5)  
+
+# initial values for parameters for the start of the chain
+
+
+# to build the model
+Model <- nimbleModel(code = ModelCode, name = "Model", 
+        constants = ModelConsts, data = ModelData, inits <- ModelInits)
+
+# To compile the model
+CModel <- compileNimble(Model)
+
+# set up the monitored quantities. Default is all of the random quantities
+ModelConf <- configureMCMC(Model, 
+                    monitors = c("mu0", "mu1", "mu_diff",
+                                 "tau", "sigma2", 
+                                 "nextbirth_weight_low",
+                                 "nextbirth_weight_high"),
+                    print = TRUE) 
+    
+# inside c(), put parameters and ftns of params specified above
+
+# build the MCMC algorithm
+ModelMCMC <- buildMCMC(ModelConf)
+# compile the MCMC chain 
+CModelMCMC <- compileNimble(ModelMCMC, project = Model)
+```
+
+#### Diagnostics
+
+```{r}
+
+################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT FOR EASY PLOTS AND DIAGNOSTICS ########
+################################################################################
+
+set.seed(10)
+
+# ModelInits <- list(mu0 = 0, mu_diff = 0, tau = 0.5)
+
+ModelInits <- list(list(mu0 = 1, mu_diff = 1, tau = 1.5), 
+                   list(mu0 = 1.5, mu_diff = 1.5, tau = 1.5)) # two chains, two lists
+
+posterior <- runMCMC(CModelMCMC, niter = 1000, thin=1, nburnin=100, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = ModelInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, 
+                            posterior$samples$chain2)
+# plot(combinedchains)
+
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+posterior$summary$all.chains
+```
 
