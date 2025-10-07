@@ -156,6 +156,134 @@ sd(theta)
 ```
 
 
+# Linear Regression
+
+## Frequentist Approach
+
+```{r}
+data(mtcars)
+#help(mtcars)
+
+##creating a new dataframe with only mpg,drat,wt, and qsec as variables
+vars=names(mtcars)%in%c("cyl", "disp", "hp", "vs","am","gear","carb") #variables to exclude
+mtcars1=mtcars[!vars]
+attach(mtcars1)
+
+fit=lm(mpg~drat+wt+qsec,data=mtcars1)
+summary(fit)
+```
+
+## Bayesian Approach
+
+```{r}
+writeLines('PATH="${RTOOLS40_HOME}\\usr\\bin;${PATH}"', con = "~/.Renviron")
+library(nimble)
+library(igraph)
+library(coda)
+library(R6)
+
+n=nrow(mtcars1)
+#covariates and response
+y=mtcars1$mpg; drat=mtcars1$drat; wt=mtcars1$wt; qsec=mtcars1$qsec
+
+# Specify the statistical model
+cars_reCode <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+mu[i] <- beta1+beta2*drat[i]+beta3*wt[i]+beta4*qsec[i]
+y[i]~dnorm(mu[i],tau)
+}
+
+# Prior for beta
+
+beta1~dnorm(mu0,tau0)
+beta2~dnorm(mu0,tau0)
+beta3~dnorm(mu0,tau0)
+beta4~dnorm(mu0,tau0)
+
+tau0 <- 1/sigma02
+
+# Prior for the precision
+tau~dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+```
+
+```{r}
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+cars_reConsts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=32)
+
+# list with data
+cars_reData <- list(y=y,drat=drat,wt=wt,qsec=qsec)
+
+# Initial values
+cars_reInits <- list(beta1=0.5, tau = 1) # Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+cars_re <- nimbleModel(code = cars_reCode, name = "cars_re", constants = cars_reConsts,
+                    data = cars_reData, inits<-cars_reInits)
+
+# To compile the model
+Ccars_re <- compileNimble(cars_re)
+
+# set up the monitored quantities. Default is all of the random quantities
+cars_reConf <- configureMCMC(cars_re, monitors = c('beta1', 'beta2', 
+              'beta3', 'beta4', 'sigma2'), enableWAIC = TRUE, print = TRUE) 
+
+# build the MCMC algorithm
+cars_reMCMC <- buildMCMC(cars_reConf)
+
+# compile the MCMC chain 
+Ccars_reMCMC <- compileNimble(cars_reMCMC, project = cars_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(10)
+cars_reInits <- list(list(beta1 = 0, tau = 1), 
+                     list(beta1 = 1, tau = 2))
+posterior <- runMCMC(Ccars_reMCMC, niter = 500000, thin=50, nburnin=100000, 
+                     summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = cars_reInits) 
+```
+
+```{r}
+combinedchains <- mcmc.list(posterior$samples$chain1, posterior$samples$chain2)
+plot(combinedchains) # too many plots sometimes
+```
+
+```{r}
+#plot(combinedchains[,c('beta1','beta2','sigma2')]) 
+#plot(combinedchains[,'beta[1]']) # when defining a vector of parameters
+autocorr.plot(posterior$samples$chain1)
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+
+```{r}
+gelman.diag(combinedchains)
+
+gelman.plot(combinedchains)
+```
+
+```{r}
+summary(combinedchains)
+```
+
+```{r}
+ESS <- t(effectiveSize(combinedchains))
+cat("The Effective Sample Size is ", ESS)
+```
+
+
 
 
 
