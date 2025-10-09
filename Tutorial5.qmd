@@ -42,6 +42,14 @@ d <- d |>
 # remove(age, birth_weights, cage, cpm2_5, imd, IMD_binary)
 ```
 
+```{r}
+# sanity check frequentist linear model
+
+# lm <- lm(bw ~ imd + cage + cpm2_5, data = d)
+# 
+# summary(lm)
+```
+
 Fit a linear model with the birth weights 𝑤𝑖 , 𝑖 = 1, ..., 200 as the outcome
 that follows a Normal distribution so that (given 𝜇𝑖 and 𝜎), (𝑤𝑖 \|𝜇𝑖 , 𝜎 ∼ 𝑁(𝜇𝑖
 , 𝜎2 )), with the weights being independent. Center the continuous covariates
@@ -73,7 +81,10 @@ tutorial sheet.)
 ```{r}
 #covariates and response
 
-y = d$bw; imd = d$imd; cage = d$cage; cpm2_5 = d$cpm2_5
+y = d$bw
+imd = d$imd
+cage = d$cage
+cpm2_5 = d$cpm2_5
 
 # Specify the statistical model
 
@@ -84,23 +95,24 @@ mod <- nimbleCode({
 # Specify the likelihood:
 for(i in 1:n){
   
-  mu[i] <- beta0+beta1*imd[i]+beta2*cage[i]+beta3*cpm2_5[i]
+  mu[i] <- beta0 + beta1 * imd[i] + beta2 * cage[i] + beta3 * cpm2_5[i]
   
-  y[i]~dnorm(mu[i],tau)
+  y[i] ~ dnorm(mu[i],tau)
   
 }
 
 # Prior for beta
 
-beta0~dnorm(mu0,tau0)
-beta1~dnorm(mu0,tau0)
-beta2~dnorm(mu0,tau0)
-beta3~dnorm(mu0,tau0)
+beta0 ~ dlnorm(1, 0.72)
+
+beta1 ~ dnorm(mu0,tau0)
+beta2 ~ dnorm(mu0,tau0)
+beta3 ~ dnorm(mu0,tau0)
 
 tau0 <- 1/sigma02
 
 # Prior for the precision
-tau~dgamma(a, b)
+tau ~ dgamma(a, b)
 
 # Compute the variance
 sigma2 <- 1/tau
@@ -131,7 +143,7 @@ Cmod_re <- compileNimble(mod_re)
 ```{r}
 mod_Conf <- 
   configureMCMC(mod_re,
-                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2", "tau"),
+                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2"),
                 enableWAIC = TRUE, print = TRUE) 
 ```
 
@@ -146,10 +158,10 @@ Cmod_reMCMC <- compileNimble(mod_reMCMC, project = mod_re)
 ####################################################################################
 ####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
 ####################################################################################
-set.seed(10)
+set.seed(1)
 
-mod_reInits <- list(list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1), 
-                     list(beta0 = 2, beta1 = 0, beta2 = 0, beta3 = 0, tau = 0.5))
+mod_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2), 
+                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2))
 
 posterior <- runMCMC(Cmod_reMCMC, niter = 500000, thin=10, nburnin=100000, 
                      summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
@@ -165,6 +177,9 @@ summary(combinedchains)
 \
 
 ```{r}
+post_1 <- as.data.frame(posterior$samples$chain1)
+post_2 <- as.data.frame(posterior$samples$chain2)
+
 plot(combinedchains) # too many plots sometimes
 ```
 
@@ -173,7 +188,7 @@ plot(combinedchains) # too many plots sometimes
 #plot(combinedchains[,'beta[1]']) # when defining a vector of parameters
 
 autocorr.plot(posterior$samples$chain1)
-autocorr.plot(posterior$samples$chain1[,"tau"])
+autocorr.plot(posterior$samples$chain1[,"beta0"])
 
 autocorr.plot(posterior$samples$chain2)
 ```
@@ -184,37 +199,205 @@ gelman.plot(combinedchains)
 ```
 
 ```{r}
-ESS <- t(effectiveSize(combinedchains))
-kable(ESS, digits = 3)
+ESS <- t(effectiveSize(posterior$samples$chain2))
+ESS <- as.data.frame(ESS)
+kable(ESS)
 # cat("The Effective Sample Size is ", ESS)
+
+effectiveSize(posterior$samples$chain1)
+effectiveSize(posterior$samples$chain2)
 ```
 
-a\) Posterior inferences can be trusted, considering convergence and mixing. Is
-this statement true or false? \[1 mark\]
+```{r}
+beta0=c(posterior$samples$chain1[,'beta0'],posterior$samples$chain2[,'beta0'])
+beta1=c(posterior$samples$chain1[,'beta1'],posterior$samples$chain2[,'beta1'])
+beta2=c(posterior$samples$chain1[,'beta2'],posterior$samples$chain2[,'beta2'])
+beta3=c(posterior$samples$chain1[,'beta3'],posterior$samples$chain2[,'beta3'])
+sigma2=c(posterior$samples$chain1[,'sigma2'],posterior$samples$chain2[,'sigma2'])
+sigma=sqrt(sigma2)
 
-b)  Considering births at hospital H in general, state the estimated mean birth
+niterf=length(beta1)
+
+x=cbind(rep(1,n),d$imd,d$cage,d$cpm2_5)
+H=x%*%solve((t(x)%*%x))%*%t(x)
+
+#fitted values
+fittedvalues=matrix(0,nrow=n,ncol=niterf)
+for(l in 1:niterf){
+fittedvalues[,l]=beta0[l]*x[,1]+beta1[l]*x[,2]+beta2[l]*x[,3]+beta3[l]*x[,4]
+}
+
+#studentised residuals
+studentisedred=matrix(0,nrow=n,ncol=niterf)
+for(l in 1:niterf){
+for(i in 1:n){
+studentisedred[i,l]=(y[i]-fittedvalues[i,l])/(sigma[l]*sqrt((1-diag(H)[i]))) 
+}  
+}  
+
+#posterior mean of studentised residuals
+studentisedredm=numeric(n)
+for(i in 1:n){
+studentisedredm[i]=mean(studentisedred[i,])  
+}
+
+#QQ-plot
+qqnorm(studentisedredm,xlim=c(-3,3),ylim=c(-3,3),lwd=2)
+qqline(studentisedredm,col=2,lwd=2)
+
+
+#checking independence of error terms
+plot(seq_along(studentisedredm),studentisedredm,xlab="Index",
+     ylab="Bayesian studentised residual",ylim=c(-3,3))
+
+
+#posterior mean fitted values
+fittedvaluesm=numeric(n)
+for(i in 1:n){
+fittedvaluesm[i]=mean(fittedvalues[i,])  
+}
+
+plot(fittedvaluesm,studentisedredm,xlab="Fitted value (posterior mean)",
+     ylab="Bayesian Studentised residual (posterior mean)")
+```
+
+```{r}
+# question 2
+
+# need post-pred dist for y[i]= beta0
+
+beta0 <- as.matrix(posterior$samples$chain1[,1])
+beta1 <- as.matrix(posterior$samples$chain1[,2])
+beta2 <- as.matrix(posterior$samples$chain1[,3])
+beta3 <- as.matrix(posterior$samples$chain1[,4])
+
+vals <- rep(0,length(beta0))
+
+ex_cage <- 29 - mean(d$age)
+ex_pm2_5 <- 16 - mean(d$pm2_5)
+
+for(l in 1:length(beta0)){
+vals[l]= beta0[l] + beta1[l] * 1 + beta2[l] * ex_cage + beta3[l] * ex_pm2_5
+}
+
+m <- mean(vals) 
+m
+
+quantile(vals, probs = c(0.025, 0.975))
+
+# crit <- 1.96*(sqrt(var(vals))/length(beta0))
+# 
+# lower <- m - crit
+# lower
+# 
+# upper <- m + crit
+# upper
+# 
+# hist(vals)
+```
+
+1.  Posterior inferences can be trusted, considering convergence and mixing. Is
+    this statement true or false? \[1 mark\]
+
+    1.  True
+
+2.  Considering births at hospital H in general, state the estimated mean birth
     weight for parents classified within then high-deprivation band, of average
     age, with an exposure to PM2.5 that is also average. \[1 mark\]
 
-c)  Provide the left limit of the 95% credible interval for the estimate in (b).
+    1.   3.218
+
+3.  Provide the left limit of the 95% credible interval for the estimate in (b).
     \[1 mark\]
 
-d)  Provide the right limit of the 95% credible interval for the estimate in
+    1.  3.134
+
+4.  Provide the right limit of the 95% credible interval for the estimate in
     (b). \[1 mark\]
 
-e)  State the predicted weight for a specific birth from a mother that is
+    1.  3.302
+
+5.  State the predicted weight for a specific birth from a mother that is
     classified within the low-deprivation band, is 29 years old, and their
     exposure to PM2.5 is 16 𝜇𝑔/𝑚3. \[1mark\]
 
-f)  Provide the left limit of the 95% credible interval for the prediction in
+    1.  2.447
+
+6.  Provide the left limit of the 95% credible interval for the prediction in
     (e). \[1 mark\]
 
-g)  Provide the right limit of the 95% credible interval for the prediction in
+    1.  2.320
+
+7.  Provide the right limit of the 95% credible interval for the prediction in
     (e). \[1 mark\]
 
-h)  Describe to someone with no statistical knowledge the effect of the model
+    1.  2.575
+
+8.  Describe to someone with no statistical knowledge the effect of the model
     covariates, considering the interpretation of the estimates for 𝛽0, 𝛽1, 𝛽2,
     𝛽3. \[3 marks\]
 
-i)  Comment on how important each one of the covariates seems to be for the
+    1.  This model is a multiple linear regression, which is a statistical model
+        designed to find the associations between several predictor variables
+        and some outcome. In this case, we are trying to find the associations
+        between birth weight and several predictors about the mother of the
+        baby. These predictors are whether the mother is in the high or low
+        group for IMD, a metric about financial deprivation of the mother, the
+        age of the mother, and her exposure to pm2.5 particles. These three
+        variables join an intercept, representing our expected birth weight if
+        the mother was in the high deprivation group and had average age and
+        pm2.5 exposure relative to the rest of the sample, in our model,
+        allowing us to consider the associations between each of those variables
+        and birth weight, while holding the other variables constant.
+
+    2.  The point estimate for the value of that intercept, $\beta_0 = 3.218$,
+        indicates that a baby born to a mother in the high deprivation group and
+        had average age and pm2.5 exposure relative to the rest of the sample,
+        is expected to weigh 3.218 kilograms on average.
+
+    3.  The point estimate for $\beta_1 = 0.075$ indicates that babies born to
+        mothers in the high deprevation group are expected to be, on average,
+        0.075 kilograms heavier than babies born to mothers in the
+        low-deprivation group, holding age and pm2.5 exposure constant.
+
+    4.  The point estimate for $\beta_2 = 0.007$ indicates that for each
+        additional year older the mother is, their babies are expected to be, on
+        average, 0.007 kilograms heavier, holding IMD and pm2.5 exposure
+        constant.
+
+    5.  The point estimate for $\beta_1 = -0.164$ indicates that for each
+        additional microgram per cubic meter of pm2.5 particulate in the
+        mother's home post code, their babies are expected to be 0.164 kilograms
+        lighter, holding age and IMD constant.
+
+```{r}
+mean(beta3)
+quantile(beta2, probs = c(0.025, 0.975))
+```
+
+1.  Comment on how important each one of the covariates seems to be for the
     modelling of birth weights. \[2 marks\]
+
+    1.  Beta1 is the parameter representing the association of the binary
+        deprivation group variable with birth weight independently of age and
+        exposure to pm2.5. The mean of our posterior samples is 0.075 and the
+        95% credible interval of this estimate from chain 1: (-0.044, 0.194)
+        represents our uncertainty about this parameter value, since that
+        interval contains 0 and is wide relative to the parameter value, we
+        would not consider this to be one of our more important parameters.
+
+    2.  Beta2 is the parameter representing the association between age and
+        birth weight independently of IMD and exposure to pm2.5. The mean of our
+        posterior samples is 0.007 and the 95% credible interval of this
+        estimate from chain 1: (-0.010, 0.024) represents our uncertainty about
+        this parameter value, since that interval contains 0 and is wide
+        relative to the parameter value, we would not consider this to be one of
+        our more important parameters.
+
+    3.  Beta 3 is the parameter representing the association between exposure to
+        pm2.5 and birth weight independently of age and IMD. The mean of our
+        posterior samples is -0.164 and the 95% credible interval of this
+        estimate from chain 1: (-0.180, -0.148) represents our uncertainty about
+        this parameter value, since this interval is small relative to the
+        parameter and does not include 0, we are inclined to consider this as an
+        important predictor of birth weight.
