@@ -7,12 +7,14 @@ editor: source
 ## Chapter 1
 
 from notes example with exponential data, gamma prior, gamma posterior
+
 ```{r}
 post_mean <- 7/(6.6)
 CI_left_bound <- qgamma(0.025,7,6.6)
 CI_right_bound <- qgamma(0.975,7,6.6)
 cat("The posterior mean is ", post_mean)
 ```
+
 ```{r}
 cat("The 95% CI is (", CI_left_bound, ",", CI_right_bound, ")" )
 ```
@@ -155,7 +157,6 @@ sd(theta)
 #  remember to discard the burn-in sample. 
 ```
 
-
 # Linear Regression
 
 ## Frequentist Approach
@@ -267,7 +268,6 @@ autocorr.plot(posterior$samples$chain1)
 autocorr.plot(posterior$samples$chain2)
 ```
 
-
 ```{r}
 gelman.diag(combinedchains)
 
@@ -282,12 +282,3 @@ summary(combinedchains)
 ESS <- t(effectiveSize(combinedchains))
 cat("The Effective Sample Size is ", ESS)
 ```
-
-
-
-
-
-
-
-
-
