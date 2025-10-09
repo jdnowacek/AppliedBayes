@@ -12,6 +12,9 @@ editor:
 library(tidyverse)
 library(nimble)
 library(coda)
+library(igraph)
+library(R6)
+library(knitr)
 ```
 
 Consider birth weight data 𝑤 = (𝑤1, ..., 𝑤200), in Kg, from 200 births at
@@ -23,21 +26,20 @@ from 6 to 10). Note the counter-intuitive interpretation of the IMD values on
 the scale from 1 to 10, and subsequently on the binary scale.
 
 ```{r, message=FALSE}
-load("~/Documents/St. Andrews/Bayes/AppliedBayes/Birth_weights_Tutorial_3.RData")
+load("Birth_weights_Tutorial_5.RData")
 
-d <- as.data.frame(birth_weights) |>
-  mutate(j = seq(1, length(birth_weights), 1))
+d <- as.data.frame(cbind(age, birth_weights, IMD_binary, pm2_5))
 
-d2 <- as.data.frame(IMD_binary)|>
-  mutate(j = seq(1, length(IMD_binary), 1))
+d <- d |>
+  rename(
+    bw = birth_weights,
+    imd = IMD_binary) |>
+  mutate(
+    cage = age - mean(age),
+    cpm2_5 = pm2_5 - mean(pm2_5),
+    imd_plot = ifelse(imd == 1, "Low", "High"))
 
-d <- left_join(d, d2) |>
-  mutate(bw = birth_weights,
-         imd = IMD_binary,
-         imd_plot = ifelse(imd == 1, "Low", "High")) |>
-  select(-c(j, birth_weights, IMD_binary))
-
-remove(d2, birth_weights, IMD_binary)
+# remove(age, birth_weights, cage, cpm2_5, imd, IMD_binary)
 ```
 
 Fit a linear model with the birth weights 𝑤𝑖 , 𝑖 = 1, ..., 200 as the outcome
@@ -68,33 +70,151 @@ appropriate. (Note that you should also be checking model assumptions and model
 fit before reporting inferences, but this will be one of the topics in the next
 tutorial sheet.)
 
+```{r}
+#covariates and response
+
+y = d$bw; imd = d$imd; cage = d$cage; cpm2_5 = d$cpm2_5
+
+# Specify the statistical model
+
+n = nrow(d)
+
+mod <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+  
+  mu[i] <- beta0+beta1*imd[i]+beta2*cage[i]+beta3*cpm2_5[i]
+  
+  y[i]~dnorm(mu[i],tau)
+  
+}
+
+# Prior for beta
+
+beta0~dnorm(mu0,tau0)
+beta1~dnorm(mu0,tau0)
+beta2~dnorm(mu0,tau0)
+beta3~dnorm(mu0,tau0)
+
+tau0 <- 1/sigma02
+
+# Prior for the precision
+tau~dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+```
+
+```{r}
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+Consts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=200)
+
+# list with data
+Data <- list(y=y,imd=imd,cage=cage,cpm2_5=cpm2_5)
+
+# Initial values
+Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1) 
+# Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+mod_re <- nimbleModel(code = mod, name = "mod", constants = Consts,
+                    data = Data, inits<-Inits)
+
+# To compile the model
+Cmod_re <- compileNimble(mod_re)
+```
+
+```{r}
+mod_Conf <- 
+  configureMCMC(mod_re,
+                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2", "tau"),
+                enableWAIC = TRUE, print = TRUE) 
+```
+
+```{r}
+# build the MCMC algorithm
+mod_reMCMC <- buildMCMC(mod_Conf)
+# compile the MCMC chain 
+Cmod_reMCMC <- compileNimble(mod_reMCMC, project = mod_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(10)
+
+mod_reInits <- list(list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1), 
+                     list(beta0 = 2, beta1 = 0, beta2 = 0, beta3 = 0, tau = 0.5))
+
+posterior <- runMCMC(Cmod_reMCMC, niter = 500000, thin=10, nburnin=100000, 
+                     summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = mod_reInits) 
+
+combinedchains <- mcmc.list(posterior$samples$chain1, posterior$samples$chain2)
+```
+
+```{r}
+summary(combinedchains)
+```
+
+\
+
+```{r}
+plot(combinedchains) # too many plots sometimes
+```
+
+```{r}
+#plot(combinedchains[,c('beta1','beta2','sigma2')]) 
+#plot(combinedchains[,'beta[1]']) # when defining a vector of parameters
+
+autocorr.plot(posterior$samples$chain1)
+autocorr.plot(posterior$samples$chain1[,"tau"])
+
+autocorr.plot(posterior$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchains)
+gelman.plot(combinedchains)
+```
+
+```{r}
+ESS <- t(effectiveSize(combinedchains))
+kable(ESS, digits = 3)
+# cat("The Effective Sample Size is ", ESS)
+```
+
 a\) Posterior inferences can be trusted, considering convergence and mixing. Is
 this statement true or false? \[1 mark\]
 
-b) Considering births at hospital H in general, state the estimated mean birth
-weight for parents classified within then high-deprivation band, of average age,
-with an exposure to PM2.5 that is also average. \[1 mark\]
+b)  Considering births at hospital H in general, state the estimated mean birth
+    weight for parents classified within then high-deprivation band, of average
+    age, with an exposure to PM2.5 that is also average. \[1 mark\]
 
-c) Provide the left limit of the 95% credible interval for the estimate in (b).
-\[1 mark\]
+c)  Provide the left limit of the 95% credible interval for the estimate in (b).
+    \[1 mark\]
 
-d) Provide the right limit of the 95% credible interval for the estimate in (b).
-\[1 mark\]
+d)  Provide the right limit of the 95% credible interval for the estimate in
+    (b). \[1 mark\]
 
-e) State the predicted weight for a specific birth from a mother that is
-classified within the low-deprivation band, is 29 years old, and their exposure
-to PM2.5 is 16 𝜇𝑔/𝑚3. \[1mark\]
+e)  State the predicted weight for a specific birth from a mother that is
+    classified within the low-deprivation band, is 29 years old, and their
+    exposure to PM2.5 is 16 𝜇𝑔/𝑚3. \[1mark\]
 
-f) Provide the left limit of the 95% credible interval for the prediction in
-(e). \[1 mark\]
+f)  Provide the left limit of the 95% credible interval for the prediction in
+    (e). \[1 mark\]
 
-g) Provide the right limit of the 95% credible interval for the prediction in
-(e). \[1 mark\]
+g)  Provide the right limit of the 95% credible interval for the prediction in
+    (e). \[1 mark\]
 
-h) Describe to someone with no statistical knowledge the effect of the model
-covariates,
-considering the interpretation of the estimates for 𝛽0, 𝛽1, 𝛽2, 𝛽3. \[3 marks\]
+h)  Describe to someone with no statistical knowledge the effect of the model
+    covariates, considering the interpretation of the estimates for 𝛽0, 𝛽1, 𝛽2,
+    𝛽3. \[3 marks\]
 
-i) Comment on how important each one of the covariates seems to be for the
-modelling of
-birth weights. \[2 marks\]
+i)  Comment on how important each one of the covariates seems to be for the
+    modelling of birth weights. \[2 marks\]
