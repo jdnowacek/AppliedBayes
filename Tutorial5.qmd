@@ -79,6 +79,16 @@ fit before reporting inferences, but this will be one of the topics in the next
 tutorial sheet.)
 
 ```{r}
+mean_age <- mean(d$age)
+pred_age <- 29-mean_age
+
+mean_pm <- mean(d$pm2_5)
+pred_pm <- 16-mean_pm
+
+prec <- 1/0.49
+```
+
+```{r}
 #covariates and response
 
 y = d$bw
@@ -103,13 +113,15 @@ for(i in 1:n){
 
 # Prior for beta
 
-beta0 ~ dlnorm(1, 0.72)
+beta0 ~ dlnorm(1, 2.040816)
 
 beta1 ~ dnorm(mu0,tau0)
 beta2 ~ dnorm(mu0,tau0)
 beta3 ~ dnorm(mu0,tau0)
 
 tau0 <- 1/sigma02
+
+obs <- beta0 + beta1 * (1) + beta2 * (-1.18) + beta3 * (5.117716)
 
 # Prior for the precision
 tau ~ dgamma(a, b)
@@ -128,13 +140,13 @@ Consts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=200)
 Data <- list(y=y,imd=imd,cage=cage,cpm2_5=cpm2_5)
 
 # Initial values
-Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1) 
+Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1, obs = 2) 
 # Nimble will generate the rest 
 
 # Build and Compile the model
 # to build the model
 mod_re <- nimbleModel(code = mod, name = "mod", constants = Consts,
-                    data = Data, inits<-Inits)
+                    data = Data, inits = Inits)
 
 # To compile the model
 Cmod_re <- compileNimble(mod_re)
@@ -143,7 +155,7 @@ Cmod_re <- compileNimble(mod_re)
 ```{r}
 mod_Conf <- 
   configureMCMC(mod_re,
-                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2"),
+                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2", "obs"),
                 enableWAIC = TRUE, print = TRUE) 
 ```
 
@@ -160,8 +172,8 @@ Cmod_reMCMC <- compileNimble(mod_reMCMC, project = mod_re)
 ####################################################################################
 set.seed(1)
 
-mod_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2), 
-                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2))
+mod_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2, obs = 2), 
+                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2, obs = 2))
 
 posterior <- runMCMC(Cmod_reMCMC, niter = 500000, thin=10, nburnin=100000, 
                      summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
@@ -194,7 +206,7 @@ autocorr.plot(posterior$samples$chain2)
 ```
 
 ```{r}
-gelman.diag(combinedchains)
+gelman.diag(combinedchains, multivariate = F)
 gelman.plot(combinedchains)
 ```
 
@@ -266,24 +278,24 @@ plot(fittedvaluesm,studentisedredm,xlab="Fitted value (posterior mean)",
 
 # need post-pred dist for y[i]= beta0
 
-beta0 <- as.matrix(posterior$samples$chain1[,1])
-beta1 <- as.matrix(posterior$samples$chain1[,2])
-beta2 <- as.matrix(posterior$samples$chain1[,3])
-beta3 <- as.matrix(posterior$samples$chain1[,4])
-
-vals <- rep(0,length(beta0))
-
-ex_cage <- 29 - mean(d$age)
-ex_pm2_5 <- 16 - mean(d$pm2_5)
-
-for(l in 1:length(beta0)){
-vals[l]= beta0[l] + beta1[l] * 1 + beta2[l] * ex_cage + beta3[l] * ex_pm2_5
-}
-
-m <- mean(vals) 
-m
-
-quantile(vals, probs = c(0.025, 0.975))
+# beta0 <- as.matrix(posterior$samples$chain1[,1])
+# beta1 <- as.matrix(posterior$samples$chain1[,2])
+# beta2 <- as.matrix(posterior$samples$chain1[,3])
+# beta3 <- as.matrix(posterior$samples$chain1[,4])
+# 
+# vals <- rep(0,length(beta0))
+# 
+# ex_cage <- 29 - mean(d$age)
+# ex_pm2_5 <- 16 - mean(d$pm2_5)
+# 
+# for(l in 1:length(beta0)){
+# vals[l]= beta0[l] + beta1[l] * 1 + beta2[l] * ex_cage + beta3[l] * ex_pm2_5
+# }
+# 
+# m <- mean(vals)
+# m
+# 
+# quantile(vals, probs = c(0.025, 0.975))
 
 # crit <- 1.96*(sqrt(var(vals))/length(beta0))
 # 
@@ -305,12 +317,12 @@ quantile(vals, probs = c(0.025, 0.975))
     weight for parents classified within then high-deprivation band, of average
     age, with an exposure to PM2.5 that is also average. \[1 mark\]
 
-    1.   3.218
+    1.  3.218
 
 3.  Provide the left limit of the 95% credible interval for the estimate in (b).
     \[1 mark\]
 
-    1.  3.134
+    1.  3.135
 
 4.  Provide the right limit of the 95% credible interval for the estimate in
     (b). \[1 mark\]
@@ -326,7 +338,7 @@ quantile(vals, probs = c(0.025, 0.975))
 6.  Provide the left limit of the 95% credible interval for the prediction in
     (e). \[1 mark\]
 
-    1.  2.320
+    1.  2.319
 
 7.  Provide the right limit of the 95% credible interval for the prediction in
     (e). \[1 mark\]
@@ -382,22 +394,23 @@ quantile(beta2, probs = c(0.025, 0.975))
         deprivation group variable with birth weight independently of age and
         exposure to pm2.5. The mean of our posterior samples is 0.075 and the
         95% credible interval of this estimate from chain 1: (-0.044, 0.194)
-        represents our uncertainty about this parameter value, since that
-        interval contains 0 and is wide relative to the parameter value, we
-        would not consider this to be one of our more important parameters.
+        represents our uncertainty about this parameter value. Since that
+        interval contains 0, meaning that we can not be sure if the parameter
+        value is positive or negative, we would not consider this to be one of
+        our more important parameters.
 
     2.  Beta2 is the parameter representing the association between age and
         birth weight independently of IMD and exposure to pm2.5. The mean of our
         posterior samples is 0.007 and the 95% credible interval of this
         estimate from chain 1: (-0.010, 0.024) represents our uncertainty about
-        this parameter value, since that interval contains 0 and is wide
-        relative to the parameter value, we would not consider this to be one of
-        our more important parameters.
+        this parameter value, since that interval contains 0, meaning that we
+        can not be sure if the parameter value is positive or negative, we would
+        not consider this to be one of our more important parameters.
 
     3.  Beta 3 is the parameter representing the association between exposure to
         pm2.5 and birth weight independently of age and IMD. The mean of our
         posterior samples is -0.164 and the 95% credible interval of this
         estimate from chain 1: (-0.180, -0.148) represents our uncertainty about
-        this parameter value, since this interval is small relative to the
-        parameter and does not include 0, we are inclined to consider this as an
-        important predictor of birth weight.
+        this parameter value, since this interval does not include 0, we are
+        inclined to consider this as a more important predictor of birth weight
+        than $\beta_1$ or $\beta_2$.
