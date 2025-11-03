@@ -4,6 +4,11 @@ format: pdf
 editor: source
 ---
 
+```{r}
+library(nimble)
+library(tidyverse)
+```
+
 ## Chapter 1
 
 from notes example with exponential data, gamma prior, gamma posterior
@@ -281,4 +286,192 @@ summary(combinedchains)
 ```{r}
 ESS <- t(effectiveSize(combinedchains))
 cat("The Effective Sample Size is ", ESS)
+```
+
+## Variable Selection
+
+```{r}
+data(mtcars)
+#help(mtcars)
+
+##creating a new dataframe with only mpg,drat,wt, and qsec as variables
+vars=names(mtcars)%in%c("cyl", "disp", "hp", "vs","am","gear","carb") #variables to exclude
+mtcars1=mtcars[!vars]
+attach(mtcars1)
+```
+
+```{r}
+n=nrow(mtcars1)
+#covariates and response
+y=mtcars1$mpg; drat=mtcars1$drat; wt=mtcars1$wt; qsec=mtcars1$qsec
+
+# Specify the statistical model
+cars_reCode <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+mu[i] <- beta1 + beta2*z2*drat[i] + beta3*z3*wt[i] + beta4*z4*qsec[i]
+y[i]~dnorm(mu[i],tau)
+}
+
+# Prior for beta
+
+beta1~dnorm(mu0,tau0)
+beta2~dnorm(mu0,tau0)
+beta3~dnorm(mu0,tau0)
+beta4~dnorm(mu0,tau0)
+z2 ~ dbern(psi)  ## indicator variable associated with beta2
+z3 ~ dbern(psi)  ## indicator variable associated with beta3
+z4 ~ dbern(psi)  ## indicator variable associated with beta4
+psi ~ dbeta(1, 1) ## hyperprior on inclusion probability
+
+tau0 <- 1/sigma02
+
+# Prior for the precision
+tau~dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+cars_reConsts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=32)
+
+# list with data
+cars_reData <- list(y=y, drat=drat, wt=wt, qsec=qsec)
+
+# Initial values
+cars_reInits <- list(beta1=0.5, beta2=0.5, beta3=0.5, beta4=0.5, tau = 1, 
+                     z2=1, z3=1, z4=1, psi=0.5) # Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+RJ_cars_re <- nimbleModel(code = cars_reCode, name = "RJ_cars_re", constants = cars_reConsts,
+                    data = cars_reData, inits<-cars_reInits)
+```
+
+```{r}
+# To compile the model
+RJ_Ccars_re <- compileNimble(RJ_cars_re)
+```
+
+```{r}
+# set up the monitored quantities. Default is all of the random quantities
+RJ_cars_reConf <- configureMCMC(RJ_cars_re,  monitors = c('beta1', 'beta2',
+                      'beta3', 'beta4', 'psi', 'sigma2', 'z2','z3','z4')) 
+```
+
+```{r}
+configureRJ(conf = RJ_cars_reConf,     
+            targetNodes = c("beta2", "beta3", "beta4"),
+            indicatorNodes = c("z2", "z3", "z4"),
+            control = list(mean = c(0, 0, 0), scale = 1))
+
+RJ_cars_reConf$printSamplers()
+```
+
+```{r}
+# build the MCMC algorithm
+RJ_cars_reMCMC <- buildMCMC(RJ_cars_reConf)
+# compile the MCMC chain 
+RJ_Ccars_reMCMC <- compileNimble(RJ_cars_reMCMC, project = RJ_cars_re)
+```
+
+```{r}
+set.seed(10)
+RJ_cars_reInits <- list(list(beta1 = 0.5, beta2 = 0.5, beta3 = 0.5, beta4 = 0.5, tau = 1, 
+                             z2=1, z3=1, z4=1, psi=0.3), 
+                     list(beta1 = 1, beta2 = 1, beta3 = 1, beta4 = 1, tau = 2, 
+                          z2=1, z3=1, z4=1, psi=0.8))
+posterior_ind_vars <- runMCMC(RJ_Ccars_reMCMC, niter = 500000, thin=50, nburnin=100000, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = RJ_cars_reInits) 
+```
+
+```{r}
+posterior_ind_vars$summary$all.chains
+```
+
+```{r}
+hills=read.table("hills.txt",header=TRUE)
+y=hills$time; climb=hills$climb; dist=hills$dist
+x=cbind(rep(1,n),climb,dist)
+```
+
+```{r}
+# y[i]~dt(mu[i],tau,nu)
+```
+
+```{r}
+# Specify the statistical model
+hills_reCode <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+#  mu[i] <- beta1 + beta2*climb[i] + beta3*dist[i]
+  y[i]~dt(mu[i],tau,nu)
+  mu[i] <- inprod(beta[1:3], x[i,1:3]) 
+}
+
+# Prior for beta
+for(j in 1:3){
+beta[j]~dnorm(mu0,tau0)
+}
+#beta1~dnorm(mu0,tau0)
+#beta2~dnorm(mu0,tau0)
+#beta3~dnorm(mu0,tau0)
+tau0 <- 1/sigma02
+
+# Prior for the precision
+tau~dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+
+#Prior for nu. Note, \nu does not have to be a Natural number.
+nu~dgamma(c,d)
+})
+
+hills_reConsts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, c=0.1, d=0.1, n=35)
+
+# list with data
+hills_reData <- list(y=y, x=x, climb=climb,dist=dist)
+
+# Initial values
+hills_reInits <- list(tau = 1) # Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+hills_re <- nimbleModel(code = hills_reCode, name = "hills_re", constants = hills_reConsts,
+                    data = hills_reData, inits = hills_reInits)
+```
+
+```{r}
+# To compile the model
+Chills_re <- compileNimble(hills_re)
+
+# set up the monitored quantities. Default is all of the random quantities
+hills_reConf <- configureMCMC(hills_re, monitors = c('beta', 'sigma2', 'nu'), print = TRUE) 
+
+# build the MCMC algorithm
+hills_reMCMC <- buildMCMC(hills_reConf)
+# compile the MCMC chain 
+Chills_reMCMC <- compileNimble(hills_reMCMC, project = hills_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(10)
+hills_reInits <- list(list(tau = 1, nu = 1), 
+                     list(tau = 2, nu = 1))
+posterior <- runMCMC(Chills_reMCMC, niter = 60000, thin=50, nburnin=10000, 
+                     summary = TRUE, WAIC = FALSE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = hills_reInits) 
+```
+
+```{r}
+posterior$summary$all.chains
 ```

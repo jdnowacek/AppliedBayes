@@ -1,0 +1,201 @@
+---
+title: "Tutorial7"
+format: html
+---
+
+```{r}
+# Libraries
+library(tidyverse)
+library(nimble)
+library(igraph)
+library(coda)
+library(R6)
+```
+
+```{r, message=F}
+airlines <- read_csv("airline.csv")
+
+bwt <- read.table("/Users/jacknowacek/Documents/St. Andrews/Bayes/AppliedBayes/lowbwt.dat", header=TRUE)
+```
+# Airlines
+## Question 1
+
+```{r}
+# EDA
+
+par(mfrow = c(2, 2))
+
+with(airlines, {
+  plot(year, fatal,
+       xlab = "Year",
+       ylab = "Fatalities",
+       main = "Fatalities vs Year")
+
+  plot(year, miles,
+       xlab = "Year",
+       ylab = "10^11 Miles",
+       main = "10^11 Miles vs Year")
+
+  plot(year, rate,
+       xlab = "Year",
+       ylab = "Fatality Rate",
+       main = "Fatality Rate vs Year")
+})
+```
+(a). Plot fatalities against year. Which year had the most fatalities?
+
+1993 had the highest number of fatalities of any year in this dataset. 
+
+(b). Plot total passenger miles flown against year. What do you see?
+
+The number of hundreds of billions of miles flown has increased nearly every year, in a very consistent linear fashion during that time.
+
+(c). Now plot fatality rate against year. Do both plot (a) and (c) make you think the same about how dangerous flying is? Briefly justify your answer.
+
+No they do not, the first plot makes it seem like the number of fatalities is not decreasing very quickly, but plot c shows that the rate of fatalities is decreasing very reliably over the range of the data.
+
+## Question 2
+
+$$
+fatalities_i = y_i \sim Poisson(\mu_i) \\ 
+\mu_i \sim \lambda * miles_i \\
+\lambda \sim Gamma(0.01, 0.001)
+$$
+
+```{r}
+pois_mod <- nimbleCode({
+  #Likelihood
+  for(i in 1:n) {
+    # Note: link function on LHS of fn assignment
+    mu[i]  <- lambda * (miles[i])
+    fatal[i] ~ dpois(mu[i])
+  }
+  # prior
+  lambda ~ dgamma(0.01, 0.001)
+})
+```
+
+```{r}
+# Values for some constants in the model
+Consts <- list(n = nrow(airlines))
+
+# The data values
+Data <- list(fatal = airlines$fatal,
+             miles = airlines$miles)
+
+
+
+# one set of initial values before building the model 
+Inits <- list(lambda = 1)
+```
+
+```{r}
+# to build the model
+pois_mod <- nimbleModel(code = pois_mod, name = "pois_mod",
+                     constants = Consts,
+                     data = Data, inits<-Inits)
+#
+# To compile the model
+comp <- compileNimble(pois_mod)
+
+# set up the monitored quantities. Default is all of the random quantities
+Conf <- configureMCMC(pois_mod, monitors =
+                          c('lambda', 'mu'), print = TRUE) 
+
+# build the MCMC algorithm
+MCMC <- buildMCMC(Conf)
+
+# compile the MCMC chain 
+MCMCcomp <- compileNimble(MCMC, project = pois_mod)
+```
+
+```{r}
+# set seed for replicability
+# set.seed(16)
+#
+# Initial values (for each chain)
+Inits <- list(list(lambda= 1),
+              list(lambda= 5),
+              list(lambda= 50))
+#
+results <- runMCMC(MCMCcomp, niter=12000, thin=1,
+                    nburnin=2000, summary = TRUE,
+                    samples = TRUE, nchains=3,
+                    samplesAsCodaMCMC=TRUE, inits=Inits, setSeed = c(6,16,26))
+
+combinedchains <- mcmc.list(results$samples$chain1, 
+                            results$samples$chain2, 
+                            results$samples$chain3)
+```
+
+```{r}
+plot(combinedchains)
+gelman.plot(combinedchains)
+gelman.diag(combinedchains)
+autocorr.plot(combinedchains[[1]][,"lambda"])
+autocorr.plot(combinedchains[[2]][,"lambda"])
+effectiveSize(combinedchains)
+MCerrThumb= summary(combinedchains)$statistics[4]/
+  summary(combinedchains)$statistics[2]
+round(MCerrThumb,4)
+```
+
+```{r}
+# muHat <- results[["summary"]][["chain1"]][2:27,1]
+
+combinedchainsMat=as.matrix(combinedchains)
+
+
+# Pearson residuals (PR), fitted values (muHat), 
+# Raw residuals (RawR)
+PR=muHat=RawR=array(data=NA,dim=c(dim(airlines)[1],
+                       dim(combinedchainsMat)[1]))
+#
+for(i in 1:dim(airlines)[1]){
+  muHat[i,]=
+    (combinedchainsMat[,1] + combinedchainsMat[,2] + combinedchainsMat[,3]) * airlines$miles[i]
+  PR[i,]=(airlines$fatal[i]-muHat[i,])/sqrt(muHat[i,])
+  RawR[i,]=(airlines$fatal[i]-muHat[i,])
+}
+# posterior mean
+RawRm=apply(RawR,1,mean)
+muHatm=apply(muHat,1,mean)
+PRm=apply(PR,1,mean)
+
+PmeanPR <- PRm
+```
+
+```{r}
+airlines=cbind(airlines,PmeanPR)
+par(mfrow=c(1,2))
+plot(1:26,airlines$PmeanPR,type="l")
+```
+
+# Birth Weights
+
+```{r}
+# EDA
+
+par(mfrow = c(2, 2))
+
+scatter.smooth(x = bwt$Mother.wt, y = bwt$Bwt,
+               xlab = "Mothers Weight",
+               ylab = "Birth Weight")
+abline(h = 2500, col = "red", lty = "dashed")
+
+boxplot(bwt$Bwt ~ bwt$Race,
+        xlab = "Race",
+        ylab = "Birth Weight")
+abline(h = 2500, col = "red", lty = "dashed")
+
+boxplot(bwt$Bwt ~ bwt$Uterine.Irr,
+        xlab = "Uterine Irritation",
+        ylab = "Birth Weight")
+abline(h = 2500, col = "red", lty = "dashed")
+```
+Based on this plot, I would not expect mothers weight to be a significant predictor for low birth weight.
+
+
+
+
+

@@ -1,0 +1,596 @@
+---
+title: "MT4571: Tutorial 6 - Assumptions check - Model fit - Model or Variable selection"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(nimble)
+library(coda)
+library(knitr)
+```
+
+## Tutorial 6
+
+Tutorial 6 is not assessed.
+
+The tutorial aims to help you practice checking model assumptions, checking the model fit, and performing model selection or variable selection.
+
+## The data
+
+We continue with the birth weight data $w=(w_1,...,w_{200})$, in Kg, from 200 births at Hospital H, from Tutorial 5. The data are given in the R workspace file `Birth_weights_Tutorial_5` in the Tutorials folder in Moodle.
+
+```{r read_data2, eval=FALSE}
+load("Birth_weights_Tutorial_5.RData")
+
+d <- as.data.frame(cbind(age, birth_weights, IMD_binary, pm2_5))
+
+d <- d |>
+  rename(
+    bw = birth_weights,
+    imd = IMD_binary) |>
+  mutate(
+    cage = age - mean(age),
+    cpm2_5 = pm2_5 - mean(pm2_5),
+    imd_plot = ifelse(imd == 1, "Low", "High"))
+```
+
+When you specify the model for Nimble, you can specify the data with a command such as,
+
+```{r read_data_for_Nimble, eval=FALSE}
+#covariates and response
+
+y = d$bw
+imd = d$imd
+cage = d$cage
+cpm2_5 = d$cpm2_5
+
+# Specify the statistical model
+
+n = nrow(d)
+
+M1 <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+  
+  mu[i] <- beta0 + beta1 * imd[i] + beta2 * cage[i] + beta3 * cpm2_5[i]
+  
+  y[i] ~ dnorm(mu[i],tau)
+  
+}
+
+# Prior for beta
+
+beta0 ~ dlnorm(1, 2.040816)
+
+beta1 ~ dnorm(mu0,tau0)
+beta2 ~ dnorm(mu0,tau0)
+beta3 ~ dnorm(mu0,tau0)
+
+tau0 <- 1/sigma02
+
+obs <- beta0 + beta1 * (1) + beta2 * (-1.18) + beta3 * (5.117716)
+
+# Prior for the precision
+tau ~ dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+```
+
+```{r}
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+Consts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=200)
+
+# list with data
+Data <- list(y=y,imd=imd,cage=cage,cpm2_5=cpm2_5)
+
+# Initial values
+Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1, obs = 2) 
+# Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+M1_re <- nimbleModel(code = M1, name = "M1", constants = Consts,
+                    data = Data, inits = Inits)
+
+# To compile the model
+CM1_re <- compileNimble(M1_re)
+```
+
+```{r}
+M1_Conf <- 
+  configureMCMC(M1_re,
+                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2", "obs"),
+                enableWAIC = TRUE, print = TRUE) 
+```
+
+```{r}
+# build the MCMC algorithm
+M1_reMCMC <- buildMCMC(M1_Conf)
+# compile the MCMC chain 
+CM1_reMCMC <- compileNimble(M1_reMCMC, project = M1_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(1)
+
+M1_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2, obs = 2), 
+                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2, obs = 2))
+
+postM1 <- runMCMC(CM1_reMCMC, niter = 500000, thin=10, nburnin=100000, 
+                     summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = M1_reInits) 
+
+combinedchainsM1 <- mcmc.list(postM1$samples$chain1, postM1$samples$chain2)
+```
+
+## Question 1
+
+As in Tutorial 5, fit a linear model with the birth weights $w_i$, $i=1,...,200$ as the outcome that follows a Normal distribution so that (given $\mu_i$ and $\sigma$), $w_i|\mu_i,\sigma \sim N(\mu_i,\sigma^2)$, with the weights being independent.
+
+a\) For the model you fitted in Tutorial 5 (we will call this model M1) $$ \mu_i = \beta_0 + \beta_{1} * IMD_i + \beta_2 * cage + \beta_3 * cpm2\_5_{i}  \ \ (M1)$$
+
+check the model assumptions and the model fit and state your inferences from those checks. (Note: use the same priors and other MCMC specifications as in Tutorial 5 for fitting the model.)
+
+```{r}
+summary(combinedchainsM1)
+```
+
+```{r}
+post_1 <- as.data.frame(postM1$samples$chain1)
+post_2 <- as.data.frame(postM1$samples$chain2)
+
+plot(combinedchains) # too many plots sometimes
+```
+
+```{r}
+#plot(combinedchains[,c('beta1','beta2','sigma2')]) 
+#plot(combinedchains[,'beta[1]']) # when defining a vector of parameters
+
+autocorr.plot(postM1$samples$chain1)
+autocorr.plot(postM1$samples$chain1[,"beta0"])
+
+autocorr.plot(postM1$samples$chain2)
+```
+
+```{r}
+gelman.diag(combinedchainsM1, multivariate = F)
+gelman.plot(combinedchainsM1)
+```
+
+```{r}
+ESS <- t(effectiveSize(postM1$samples$chain2))
+ESS <- as.data.frame(ESS)
+kable(ESS)
+# cat("The Effective Sample Size is ", ESS)
+
+effectiveSize(postM1$samples$chain1)
+effectiveSize(postM1$samples$chain2)
+```
+
+```{r}
+beta0=c(postM1$samples$chain1[,'beta0'],postM1$samples$chain2[,'beta0'])
+beta1=c(postM1$samples$chain1[,'beta1'],postM1$samples$chain2[,'beta1'])
+beta2=c(postM1$samples$chain1[,'beta2'],postM1$samples$chain2[,'beta2'])
+beta3=c(postM1$samples$chain1[,'beta3'],postM1$samples$chain2[,'beta3'])
+sigma2=c(postM1$samples$chain1[,'sigma2'],postM1$samples$chain2[,'sigma2'])
+sigma=sqrt(sigma2)
+
+niterf=length(beta1)
+
+x=cbind(rep(1,n),d$imd,d$cage,d$cpm2_5)
+H=x%*%solve((t(x)%*%x))%*%t(x)
+
+#fitted values
+fittedvalues=matrix(0,nrow=n,ncol=niterf)
+for(l in 1:niterf){
+fittedvalues[,l]=beta0[l]*x[,1]+beta1[l]*x[,2]+beta2[l]*x[,3]+beta3[l]*x[,4]
+}
+
+#studentised residuals
+studentisedred=matrix(0,nrow=n,ncol=niterf)
+for(l in 1:niterf){
+for(i in 1:n){
+studentisedred[i,l]=(y[i]-fittedvalues[i,l])/(sigma[l]*sqrt((1-diag(H)[i]))) 
+}  
+}  
+
+#posterior mean of studentised residuals
+studentisedredm=numeric(n)
+for(i in 1:n){
+studentisedredm[i]=mean(studentisedred[i,])  
+}
+
+#QQ-plot
+qqnorm(studentisedredm,xlim=c(-3,3),ylim=c(-3,3),lwd=2)
+qqline(studentisedredm,col=2,lwd=2)
+
+
+#checking independence of error terms
+plot(seq_along(studentisedredm),studentisedredm,xlab="Index",
+     ylab="Bayesian studentised residual",ylim=c(-3,3))
+
+
+#posterior mean fitted values
+fittedvaluesm=numeric(n)
+for(i in 1:n){
+fittedvaluesm[i]=mean(fittedvalues[i,])  
+}
+
+plot(fittedvaluesm,studentisedredm,xlab="Fitted value (posterior mean)",
+     ylab="Bayesian Studentised residual (posterior mean)")
+```
+
+b\) Running a separate analysis and model fit, perform variable selection. State which covariates you believe should be kept in the model, based on the variable selection results. Call this model M2.
+
+```{r checks_analysis, eval=TRUE, warning=FALSE}
+#covariates and response
+
+y = d$bw
+imd = d$imd
+cage = d$cage
+cpm2_5 = d$cpm2_5
+
+# Specify the statistical model
+
+n = nrow(d)
+
+M2 <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+  
+  mu[i] <- beta0 + beta1 * z1 * imd[i] + beta2 * z2 * cage[i] + beta3 * z3 * cpm2_5[i]
+  
+  y[i] ~ dnorm(mu[i],tau)
+  
+}
+
+# Prior for beta
+
+beta0 ~ dlnorm(1, 2.040816)
+
+beta1 ~ dnorm(mu0,tau0)
+beta2 ~ dnorm(mu0,tau0)
+beta3 ~ dnorm(mu0,tau0)
+
+z1 ~ dbern(psi)  ## indicator variable associated with beta1
+z2 ~ dbern(psi)  ## indicator variable associated with beta2
+z3 ~ dbern(psi)  ## indicator variable associated with beta3
+
+psi ~ dbeta(1, 1) ## hyperprior on inclusion probability
+
+tau0 <- 1/sigma02
+
+# obs <- beta0 + beta1 * (1) + beta2 * (-1.18) + beta3 * (5.117716)
+
+# Prior for the precision
+tau ~ dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+```
+
+```{r}
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+Consts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=200)
+
+# list with data
+Data <- list(y=y,imd=imd,cage=cage,cpm2_5=cpm2_5)
+
+# Initial values
+Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1,
+              z1 = 1, z2 = 1, z3 = 1) 
+# Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+M2_re <- nimbleModel(code = M2, name = "M2", constants = Consts,
+                    data = Data, inits = Inits)
+
+# To compile the model
+CM2_re <- compileNimble(M2_re)
+```
+
+```{r}
+M2_Conf <- 
+  configureMCMC(M2_re,
+                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2", 
+                             "z1", "z2", "z3"),
+                enableWAIC = TRUE, print = TRUE) 
+```
+
+```{r}
+# build the MCMC algorithm
+M2_reMCMC <- buildMCMC(M2_Conf)
+# compile the MCMC chain 
+CM2_reMCMC <- compileNimble(M2_reMCMC, project = M2_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(1)
+
+M2_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2,
+                        z1 = 1, z2 = 1, z3 = 1), 
+                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2,
+                        z1 = 1, z2 = 1, z3 = 1))
+
+postM2 <- runMCMC(CM2_reMCMC, niter = 500000, thin=10, nburnin=100000, 
+                     summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = M2_reInits) 
+
+combinedchainsM2 <- mcmc.list(postM2$samples$chain1, postM2$samples$chain2)
+```
+
+```{r}
+summary(combinedchainsM2)
+```
+
+Looks like just beta 3 should be in the model
+
+## Question 2
+
+a\) Fit the model you selected in Question 1(c) above, including this time an interaction term between the binary `IMD` and the centered `cpm2_5`. Call this model M3. The model should look something like
+
+$$ \mu_i = \beta_0 + ... + \beta_{int} * (IMD_i * cpm2\_5_i)  \ \ (M3)$$
+
+The interaction term in the model allows the coefficient of \`cpm2_5\` to be different for the two deprivation groups.
+
+b\) Interpret the effect of the interaction coefficient $\beta_{int}$ .
+
+c\) Evaluate the WAIC value for M2 and M3.
+
+d\) Running a separate analysis and model fit, perform variable selection for M3. Based both on the WAIC and the variable selection results, which model you would prefer out of M2 and M3?
+
+```{r int_selection_analysis, eval=TRUE, warning=FALSE}
+#covariates and response
+
+y = d$bw
+imd = d$imd
+cage = d$cage
+cpm2_5 = d$cpm2_5
+
+# Specify the statistical model
+
+n = nrow(d)
+
+M3 <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+  
+  mu[i] <- beta0 + beta1 * imd[i] + beta2 * cage[i] + beta3 * cpm2_5[i] + 
+    beta_int * (imd[i]*cpm2_5[i])
+  
+  y[i] ~ dnorm(mu[i],tau)
+  
+}
+
+# Prior for beta
+
+beta0 ~ dlnorm(1, 2.040816)
+
+beta1 ~ dnorm(mu0,tau0)
+beta2 ~ dnorm(mu0,tau0)
+beta3 ~ dnorm(mu0,tau0)
+beta_int ~ dnorm(mu0,tau0)
+
+tau0 <- 1/sigma02
+
+# obs <- beta0 + beta1 * (1) + beta2 * (-1.18) + beta3 * (5.117716)
+
+# Prior for the precision
+tau ~ dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+```
+
+```{r}
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+Consts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=200)
+
+# list with data
+Data <- list(y=y,imd=imd,cage=cage,cpm2_5=cpm2_5)
+
+# Initial values
+Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, tau = 1, beta_int = 0) 
+# Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+M3_re <- nimbleModel(code = M3, name = "M3", constants = Consts,
+                    data = Data, inits = Inits)
+
+# To compile the model
+CM3_re <- compileNimble(M3_re)
+```
+
+```{r}
+M3_Conf <- 
+  configureMCMC(M3_re,
+                monitors = c("beta0", "beta1", "beta2", "beta3", "sigma2", "beta_int"),
+                enableWAIC = TRUE, print = TRUE) 
+```
+
+```{r}
+# build the MCMC algorithm
+M3_reMCMC <- buildMCMC(M3_Conf)
+# compile the MCMC chain 
+CM3_reMCMC <- compileNimble(M3_reMCMC, project = M3_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(1)
+
+M3_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2, beta_int = 0), 
+                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, tau = 2, beta_int = 0))
+
+postM3 <- runMCMC(CM3_reMCMC, niter = 500000, thin=10, nburnin=100000, 
+                     summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = M3_reInits) 
+
+combinedchainsM3 <- mcmc.list(postM3$samples$chain1, postM3$samples$chain2)
+```
+```{r}
+summary(combinedchainsM3)
+```
+
+birth weight is expected to be 0.043 higher due to cpm2.5 in the imd = 1 group than its effect would be in the imd = 0 group.
+
+
+```{r checks_analysis, eval=TRUE, warning=FALSE}
+#covariates and response
+
+y = d$bw
+imd = d$imd
+cage = d$cage
+cpm2_5 = d$cpm2_5
+
+# Specify the statistical model
+
+n = nrow(d)
+
+M4 <- nimbleCode({
+
+# Specify the likelihood:
+for(i in 1:n){
+  
+  mu[i] <- 
+    beta0 + 
+    beta1 * z1 * imd[i] + 
+    beta2 * z2 * cage[i] + 
+    beta3 * z3 * cpm2_5[i] + 
+    beta_int * (imd[i]*cpm2_5[i]) * zint
+  
+  y[i] ~ dnorm(mu[i],tau)
+  
+}
+
+# Prior for beta
+
+beta0 ~ dlnorm(1, 2.040816)
+
+beta1 ~ dnorm(mu0,tau0)
+beta2 ~ dnorm(mu0,tau0)
+beta3 ~ dnorm(mu0,tau0)
+beta_int ~ dnorm(mu0,tau0)
+
+z1 ~ dbern(psi)  ## indicator variable associated with beta1
+z2 ~ dbern(psi)  ## indicator variable associated with beta2
+z3 ~ dbern(psi)  ## indicator variable associated with beta3
+zint ~ dbern(psi)  ## indicator variable associated with beta_int
+
+psi ~ dbeta(1, 1) ## hyperprior on inclusion probability
+
+tau0 <- 1/sigma02
+
+# obs <- beta0 + beta1 * (1) + beta2 * (-1.18) + beta3 * (5.117716)
+
+# Prior for the precision
+tau ~ dgamma(a, b)
+
+# Compute the variance
+sigma2 <- 1/tau
+})
+```
+
+```{r}
+# hyperparameters for the betas and tau
+# would find n in R environment. Including here to suppress a warning
+Consts <- list(mu0=0, sigma02=1000, a=0.1, b=0.1, n=200)
+
+# list with data
+Data <- list(y=y,imd=imd,cage=cage,cpm2_5=cpm2_5)
+
+# Initial values
+Inits <- list(beta0 = 1, beta1 = 0, beta2 = 0, beta3 = 0, beta_int = 0, tau = 1,
+              z1 = 1, z2 = 1, z3 = 1, zint = 1) 
+# Nimble will generate the rest 
+
+# Build and Compile the model
+# to build the model
+M4_re <- nimbleModel(code = M4, name = "M4", constants = Consts,
+                    data = Data, inits = Inits)
+
+# To compile the model
+CM4_re <- compileNimble(M4_re)
+```
+
+```{r}
+M4_Conf <- 
+  configureMCMC(M4_re,
+                monitors = c("beta0", "beta1", "beta2", "beta3", "beta_int", "sigma2", 
+                             "z1", "z2", "z3", "zint"),
+                enableWAIC = TRUE, print = TRUE) 
+```
+
+```{r}
+# build the MCMC algorithm
+M4_reMCMC <- buildMCMC(M4_Conf)
+# compile the MCMC chain 
+CM4_reMCMC <- compileNimble(M4_reMCMC, project = M4_re)
+```
+
+```{r}
+####################################################################################
+####### POSTERIOR SAMPLES IN CODA FORMAT TO GET MORE EASILY PLOTS AND DIAGNOSTICS  #
+####################################################################################
+set.seed(1)
+
+M4_reInits <- list(list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, beta_int = 0, tau = 2,
+                        z1 = 1, z2 = 1, z3 = 1, zint = 1), 
+                     list(beta0 = 3, beta1 = 0, beta2 = 0, beta3 = 0, beta_int = 0, tau = 2,
+                        z1 = 1, z2 = 1, z3 = 1, zint = 1))
+
+postM4 <- runMCMC(CM4_reMCMC, niter = 500000, thin=10, nburnin=100000, 
+                     summary = TRUE, WAIC = TRUE, samples = TRUE, nchains=2, 
+                     samplesAsCodaMCMC=TRUE, inits = M4_reInits) 
+
+combinedchainsM4 <- mcmc.list(postM4$samples$chain1, postM4$samples$chain2)
+```
+
+```{r}
+summary(combinedchainsM4)
+
+post_1 <- as.data.frame(postM4$samples$chain1)
+post_2 <- as.data.frame(postM4$samples$chain2)
+
+plot(combinedchainsM4) # too many plots sometimes
+
+ESS <- t(effectiveSize(postM4$samples$chain2))
+ESS <- as.data.frame(ESS)
+kable(ESS)
+# cat("The Effective Sample Size is ", ESS)
+
+effectiveSize(postM4$samples$chain1)
+effectiveSize(postM4$samples$chain2)
+```
+
+```{r}
+summary(combinedchainsM3)
+
+post_1 <- as.data.frame(postM4$samples$chain1)
+post_2 <- as.data.frame(postM4$samples$chain2)
+
+plot(combinedchainsM4) # too many plots sometimes
+```
+
