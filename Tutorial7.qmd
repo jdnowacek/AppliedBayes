@@ -3,13 +3,17 @@ title: "Tutorial7"
 format: html
 ---
 
-```{r}
+# Packages and Data
+
+```{r, message=FALSE}
 # Libraries
 library(tidyverse)
 library(nimble)
 library(igraph)
 library(coda)
 library(R6)
+library(COUNT)
+library(boot)
 ```
 
 ```{r, message=F}
@@ -26,7 +30,7 @@ bwt <- read.table("/Users/jacknowacek/Documents/St. Andrews/Bayes/AppliedBayes/l
 par(mfrow = c(2, 2))
 
 with(airlines, {
-  plot(year, fatal,
+  plot(year, fatal, type = "l",
        xlab = "Year",
        ylab = "Fatalities",
        main = "Fatalities vs Year")
@@ -58,7 +62,7 @@ No they do not, the first plot makes it seem like the number of fatalities is no
 
 $$
 fatalities_i = y_i \sim Poisson(\mu_i) \\ 
-\mu_i \sim \lambda * miles_i \\
+log(\mu_i) \sim \lambda * miles_i \\
 \lambda \sim Gamma(0.01, 0.001)
 $$
 
@@ -71,7 +75,7 @@ pois_mod <- nimbleCode({
     fatal[i] ~ dpois(mu[i])
   }
   # prior
-  lambda ~ dgamma(0.01, 0.001)
+  lambda ~ dgamma(0.1, 0.001)
 })
 ```
 
@@ -83,8 +87,6 @@ Consts <- list(n = nrow(airlines))
 Data <- list(fatal = airlines$fatal,
              miles = airlines$miles)
 
-
-
 # one set of initial values before building the model 
 Inits <- list(lambda = 1)
 ```
@@ -93,14 +95,14 @@ Inits <- list(lambda = 1)
 # to build the model
 pois_mod <- nimbleModel(code = pois_mod, name = "pois_mod",
                      constants = Consts,
-                     data = Data, inits<-Inits)
+                     data = Data, inits = Inits)
 #
 # To compile the model
 comp <- compileNimble(pois_mod)
 
 # set up the monitored quantities. Default is all of the random quantities
 Conf <- configureMCMC(pois_mod, monitors =
-                          c('lambda', 'mu'), print = TRUE) 
+                          c('lambda'), print = TRUE) 
 
 # build the MCMC algorithm
 MCMC <- buildMCMC(Conf)
@@ -126,6 +128,8 @@ results <- runMCMC(MCMCcomp, niter=12000, thin=1,
 combinedchains <- mcmc.list(results$samples$chain1, 
                             results$samples$chain2, 
                             results$samples$chain3)
+
+summary(combinedchains)
 ```
 
 ```{r}
@@ -134,15 +138,15 @@ gelman.plot(combinedchains)
 gelman.diag(combinedchains)
 autocorr.plot(combinedchains[[1]][,"lambda"])
 autocorr.plot(combinedchains[[2]][,"lambda"])
+
 effectiveSize(combinedchains)
-MCerrThumb= summary(combinedchains)$statistics[4]/
-  summary(combinedchains)$statistics[2]
-round(MCerrThumb,4)
+
+# MCerrThumb= summary(combinedchains)$statistics[4]/
+#   summary(combinedchains)$statistics[2]
+# round(MCerrThumb,4)
 ```
 
 ```{r}
-# muHat <- results[["summary"]][["chain1"]][2:27,1]
-
 combinedchainsMat=as.matrix(combinedchains)
 
 
@@ -152,10 +156,11 @@ PR=muHat=RawR=array(data=NA,dim=c(dim(airlines)[1],
                        dim(combinedchainsMat)[1]))
 #
 for(i in 1:dim(airlines)[1]){
-  muHat[i,]=
-    (combinedchainsMat[,1] + combinedchainsMat[,2] + combinedchainsMat[,3]) * airlines$miles[i]
-  PR[i,]=(airlines$fatal[i]-muHat[i,])/sqrt(muHat[i,])
-  RawR[i,]=(airlines$fatal[i]-muHat[i,])
+  muHat[i,] = combinedchainsMat[,1] * airlines$miles[i]
+
+  PR[i,] = (airlines$fatal[i]-muHat[i,])/sqrt(muHat[i,])
+  
+  RawR[i,] = (airlines$fatal[i]-muHat[i,])
 }
 # posterior mean
 RawRm=apply(RawR,1,mean)
@@ -166,17 +171,40 @@ PmeanPR <- PRm
 ```
 
 ```{r}
+PmeanPR[26]
+```
+
+
+```{r}
+plot(airlines$year, airlines$fatal, type = "l",
+     xlab = "Year",
+     ylab = "Fatalities",
+     main = "Fatalities vs Year")
+
+
 airlines=cbind(airlines,PmeanPR)
 par(mfrow=c(1,2))
 plot(1:26,airlines$PmeanPR,type="l")
 ```
+No, the residuals do not seem independent
+
+Fatalities are assumed to be just a function of miles, but we saw from our EDA plots that the fatality rate drops over time, which we do not account for in this model. 
+
+```{r}
+summary(combinedchains)
+```
+
+The posterior mean of lambda is 2.301
+
+The upper bound of the 95% CrI is 2.481
+
+We estimate that the number of fatal airline accidents is approximately 2.30 per 10^11 passenger miles flown. The upper end of our credible interval means that we are 95% certain that the number of fatal airline accidents per 10^11 passenger miles is between our lower bound and 2.48 accidents.
 
 # Birth Weights
 
 ```{r}
 # EDA
 
-par(mfrow = c(2, 2))
 
 scatter.smooth(x = bwt$Mother.wt, y = bwt$Bwt,
                xlab = "Mothers Weight",
@@ -194,6 +222,268 @@ boxplot(bwt$Bwt ~ bwt$Uterine.Irr,
 abline(h = 2500, col = "red", lty = "dashed")
 ```
 Based on this plot, I would not expect mothers weight to be a significant predictor for low birth weight.
+
+```{r}
+mean_mother.wt <- mean(bwt$Mother.wt)
+sd_mother.wt <- sd(bwt$Mother.wt)
+
+bwt <- bwt |>
+  mutate(std_mother.wt = (Mother.wt - mean_mother.wt) / sd_mother.wt)
+
+bwt_mod <- nimbleCode({
+  #Likelihood
+  for(i in 1:n) {
+    # Note: link function on LHS of fn assignment
+    y[i] ~ dbern(prob = p[i])
+    
+    logit(p[i]) <- beta0 + beta1 * std_mother.wt[i]
+  }
+  # prior
+  beta0 ~ dnorm(0, 0.001)
+  beta1 ~ dnorm(0, 0.001)
+})
+```
+
+```{r}
+# Values for some constants in the model
+Consts_bwt <- list(n = nrow(bwt))
+
+# The data values
+Data_bwt <- list(std_mother.wt = bwt$std_mother.wt,
+             y = bwt$LowBwt)
+
+
+
+# one set of initial values before building the model 
+Inits_bwt <- list(beta0 = 1, beta1 = 1)
+```
+
+```{r}
+# to build the model
+bwt_mod_b <- nimbleModel(code = bwt_mod, name = "bwt_mod",
+                     constants = Consts_bwt,
+                     data = Data_bwt, inits = Inits_bwt)
+#
+# To compile the model
+comp_bwt <- compileNimble(bwt_mod_b)
+
+# set up the monitored quantities. Default is all of the random quantities
+Conf_bwt <- configureMCMC(bwt_mod_b, monitors =
+                          c('beta0', 'beta1'), print = TRUE) 
+
+# build the MCMC algorithm
+MCMC_bwt <- buildMCMC(Conf_bwt)
+
+# compile the MCMC chain 
+MCMCcomp_bwt <- compileNimble(MCMC_bwt, project = bwt_mod_b)
+```
+
+```{r}
+Inits_bwt <- list(list(beta0 = -2, beta1 = 1),
+                  list(beta0 = 1, beta1 = -2),
+                  list(beta0 = 0.1, beta1 = 0.1))
+#
+results_bwt <- runMCMC(MCMCcomp_bwt, niter=14000, thin=3,
+                    nburnin=5000, summary = TRUE,
+                    samples = TRUE, nchains=3,
+                    samplesAsCodaMCMC=TRUE, inits = Inits_bwt, setSeed = c(7,14,21))
+
+combinedchains_bwt <- mcmc.list(results_bwt$samples$chain1, 
+                            results_bwt$samples$chain2, 
+                            results_bwt$samples$chain3)
+```
+
+```{r}
+plot(combinedchains_bwt)
+
+gelman.plot(combinedchains_bwt)
+gelman.diag(combinedchains_bwt)
+
+autocorr.plot(combinedchains_bwt[[1]][,"beta0"])
+autocorr.plot(combinedchains_bwt[[1]][,"beta1"])
+autocorr.plot(combinedchains_bwt[[2]][,"beta0"])
+autocorr.plot(combinedchains_bwt[[2]][,"beta1"])
+autocorr.plot(combinedchains_bwt[[3]][,"beta0"])
+autocorr.plot(combinedchains_bwt[[3]][,"beta1"])
+
+effectiveSize(combinedchains_bwt)
+
+# MCerrThumb= summary(combinedchains_bwt)$statistics[4]/
+#   summary(combinedchains_bwt)$statistics[2]
+# round(MCerrThumb,4)
+
+summary(combinedchains_bwt)
+```
+
+```{r}
+combinedchains_bwt_Mat=as.matrix(combinedchains_bwt)
+
+# Pearson residuals (PR), fitted values (muHat), # Raw residuals (RawR)
+PR_bwt = PR_bwt2=muHat_bwt=RawR_bwt=array(data=NA,dim=c(dim(bwt)[1],
+                       dim(combinedchains_bwt_Mat)[1]))
+#
+for(i in 1:dim(bwt)[1]){
+  muHat_bwt[i,] = 
+    inv.logit(combinedchains_bwt_Mat[,1] + combinedchains_bwt_Mat[,2] * bwt$std_mother.wt[i])
+  
+  PR_bwt[i,] = (bwt$LowBwt[i]-muHat_bwt[i,])/sqrt(muHat_bwt[i,])
+  
+  PR_bwt2[i, ] = (bwt$LowBwt[i] - muHat_bwt[i, ]) / (sqrt(muHat_bwt[i, ] * (1 - muHat_bwt[i, ])))
+  
+  RawR_bwt[i,] = (bwt$LowBwt[i]-muHat_bwt[i,])
+}
+# posterior mean
+RawRm_bwt = apply(RawR_bwt,1,mean)
+RawR_var_bwt = apply(RawR_bwt,1,var)
+muHatm_bwt = apply(muHat_bwt,1,mean)
+PRm_bwt = apply(PR_bwt2,1,mean)
+
+exp_var <- muHatm_bwt * (1 - muHatm_bwt)
+```
+
+```{r}
+bwt_res=cbind(bwt,PRm_bwt)
+
+par(mfrow=c(1,2))
+
+plot(1:nrow(bwt),bwt_res$PRm_bwt,type="l")
+```
+
+```{r}
+plot(
+  muHatm_bwt,
+  RawR_var_bwt,
+  ylim = range(c(RawR_var_bwt, exp_var)),
+  xlim = range(c(muHatm_bwt, muHatm_bwt)),
+  xlab = "muHatm_bwt",
+  ylab = "RawR_var_bwt / exp_var"
+)
+lines(muHatm_bwt, exp_var, col = "red")
+```
+
+```{r}
+plot(muHatm_bwt, exp_var, col = "red")
+```
+
+expected variance for the first raw in the table:
+
+```{r}
+muHatm_bwt[1] * (1 - muHatm_bwt[1])
+```
+
+### posterior predictive
+
+```{r}
+set.seed(3)
+
+# matrix of posterior samples
+post <- as.matrix(combinedchains_bwt)
+
+# number of posterior draws
+ndraws <- nrow(post)
+n <- nrow(bwt)
+
+# store predicted classifications
+prop_low_correct <- numeric(ndraws)
+prop_norm_correct <- numeric(ndraws)
+
+for(s in 1:ndraws) {
+  p_hat <- plogis(post[s,1] + post[s,2] * bwt$std_mother.wt)
+  y_pred <- rbinom(n, 1, p_hat)
+  
+  low_idx  <- which(bwt$LowBwt == 1)
+  norm_idx <- which(bwt$LowBwt == 0)
+  
+  prop_low_correct[s]  <- mean(y_pred[low_idx]  == 1)
+  prop_norm_correct[s] <- mean(y_pred[norm_idx] == 0)
+}
+
+# posterior predictive densities
+df_preds <- tibble(
+  low = prop_low_correct,
+  normal = prop_norm_correct
+)
+
+df_preds |>
+  pivot_longer(cols = everything(),
+               names_to = "group", values_to = "prop") |>
+  ggplot(aes(x = prop, fill = group)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "Proportion correctly detected",
+       y = "Posterior density",
+       title = "Posterior predictive densities for correct detections") +
+  theme_bw()
+
+# Calculate the probability of correctly predicting more than 50% of low-weight births
+# This is the proportion of the posterior predictive samples where prop_low_correct > 0.5
+prob_over_50_percent <- mean(prop_low_correct > 0.5)
+
+# Round the result to two decimal places, as requested
+rounded_prob <- round(prob_over_50_percent, 2)
+
+# Print the final result
+print(paste("Probability of correctly predicting > 50% of low-weight births:", rounded_prob))
+```
+
+```{r}
+summary(combinedchains_bwt)
+```
+
+
+```{r}
+plot(combinedchains_bwt)
+```
+
+
+```{r}
+x <- post[,1] + (post[,2] * (150 - mean_mother.wt)/sd_mother.wt)
+
+x_post <- inv.logit(x)
+
+# Calculate the median (point estimate)
+median_prob <- median(x_post)
+
+# Calculate the 95% Credible Interval
+CI_95 <- quantile(x_post, c(0.025, 0.975))
+
+# Print the results
+print(paste("Median Predicted Probability for Mother 1:", round(median_prob, 4)))
+print("95% Credible Interval (Lower, Upper):")
+print(round(CI_95, 4))
+```
+
+```{r}
+y <- mean(post[,1]) + (mean(post[,2]) * (180 - mean_mother.wt)/sd_mother.wt)
+
+inv.logit(y)
+```
+
+
+```{r}
+mean(bwt$Mother.wt)
+```
+
+```{r}
+hist(bwt$Mother.wt)
+```
+
+```{r}
+int_est <- inv.logit(post[,1])
+
+mean(int_est)
+int_CI_95 <- quantile(int_est, c(0.025, 0.975))
+int_CI_95
+
+# sd(bwt$Mother.wt)
+```
+
+```{r}
+slope_est <- inv.logit(post[,2])
+
+mean(slope_est)
+slope_CI_95 <- quantile(slope_est, c(0.025, 0.975))
+slope_CI_95
+```
 
 
 
