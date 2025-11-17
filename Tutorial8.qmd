@@ -1,0 +1,27 @@
+---
+title: "Tutorial8"
+format: html
+---
+
+```{r, message=F}
+library(tidyverse)
+library(nimble)
+library(igraph)
+library(coda)
+library(R6)
+```
+
+```{r, message=F}
+# Read datasets
+
+dye <- read_csv(here::here("Dyestuff.csv"))
+w <- read_csv(here::here("wartpid.csv"))
+```
+
+```{r}
+dye |>
+  ggplot(aes(x = Batch, y = Yield)) +
+  geom_boxplot() +
+  theme_bw()
+```
+

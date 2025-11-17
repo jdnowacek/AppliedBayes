@@ -174,6 +174,8 @@ PmeanPR <- PRm
 PmeanPR[26]
 ```
 
+The pearson residual for the year 2001 is 
+
 
 ```{r}
 plot(airlines$year, airlines$fatal, type = "l",
@@ -185,6 +187,8 @@ plot(airlines$year, airlines$fatal, type = "l",
 airlines=cbind(airlines,PmeanPR)
 par(mfrow=c(1,2))
 plot(1:26,airlines$PmeanPR,type="l")
+
+acf(PmeanPR)
 ```
 No, the residuals do not seem independent
 
@@ -350,15 +354,17 @@ plot(1:nrow(bwt),bwt_res$PRm_bwt,type="l")
 ```
 
 ```{r}
-plot(
-  muHatm_bwt,
-  RawR_var_bwt,
-  ylim = range(c(RawR_var_bwt, exp_var)),
-  xlim = range(c(muHatm_bwt, muHatm_bwt)),
-  xlab = "muHatm_bwt",
-  ylab = "RawR_var_bwt / exp_var"
-)
-lines(muHatm_bwt, exp_var, col = "red")
+# plot(
+#   muHatm_bwt,
+#   RawR_var_bwt,
+#   ylim = range(c(RawR_var_bwt, exp_var)),
+#   xlim = range(c(muHatm_bwt, muHatm_bwt)),
+#   xlab = "muHatm_bwt",
+#   ylab = "RawR_var_bwt / exp_var"
+# )
+# lines(muHatm_bwt, exp_var, col = "red")
+
+plot(muHatm_bwt, RawR_var_bwt)
 ```
 
 ```{r}
@@ -436,7 +442,7 @@ plot(combinedchains_bwt)
 
 
 ```{r}
-x <- post[,1] + (post[,2] * (150 - mean_mother.wt)/sd_mother.wt)
+x <- mean(post[,1] )
 
 x_post <- inv.logit(x)
 
@@ -453,7 +459,7 @@ print(round(CI_95, 4))
 ```
 
 ```{r}
-y <- mean(post[,1]) + (mean(post[,2]) * (180 - mean_mother.wt)/sd_mother.wt)
+y <- mean(post[,1]) + (mean(post[,2]) * ( - mean_mother.wt)/sd_mother.wt)
 
 inv.logit(y)
 ```
@@ -461,6 +467,7 @@ inv.logit(y)
 
 ```{r}
 mean(bwt$Mother.wt)
+sd_mother.wt
 ```
 
 ```{r}
@@ -485,7 +492,159 @@ slope_CI_95 <- quantile(slope_est, c(0.025, 0.975))
 slope_CI_95
 ```
 
+```{r}
+mean(post[,1])
+quantile(post[,1])
+
+mean(post[,2])
+quantile(post[,2])
+```
+
+```{r}
+post_df <- as.data.frame(post)
+
+transformed_samples <- post_df |>
+  mutate(
+    beta0_star = beta0 - beta1 * mean_mother.wt / sd_mother.wt,
+    beta1_star = beta1 / sd_mother.wt
+  )
+```
+
+```{r}
+transformed_samples |>
+  summarise(
+    across(c(beta0_star, beta1_star),
+           list(mean = mean,
+                q0 = ~quantile(.x, 0),
+                q25 = ~quantile(.x, 0.25),
+                q50 = ~quantile(.x, 0.5),
+                q75 = ~quantile(.x, 0.75),
+                q100 = ~quantile(.x, 1)))
+  )
+```
+
+```{r}
+# R code to transform MCMC samples of beta coefficients into
+# interpretable probabilities of low birth weight.
+
+# --- 1. Helper Function ---
+# A simple function to convert log-odds (logit) to probability
+logit_to_prob <- function(logit) {
+  # This is the inverse logit function
+  return(1 / (1 + exp(-logit)))
+}
+
+# --- 2. Main Transformation & Summary Function ---
+
+#' Summarize Posterior Probabilities
+#'
+#' Takes MCMC samples for beta_0 and beta_1 and returns a list
+#' containing the posterior mean and 95% credible interval for the
+#' probability of low birth weight for three different scenarios.
+#'
+#' @param beta_0_samples A numeric vector of MCMC samples for the intercept (beta_0).
+#' @param beta_1_samples A numeric vector of MCMC samples for the slope (beta_1).
+#'
+#' @return A list with three elements: 'average_mother', 'lighter_mother',
+#'         and 'heavier_mother'. Each element contains the mean probability
+#'         and the 95% CI.
+#'         
+#'         
+summarize_posterior_prob <- function(beta_0_samples, beta_1_samples) {
+  
+  # Ensure the sample vectors are the same length
+  if (length(beta_0_samples) != length(beta_1_samples)) {
+    stop("Error: beta_0 and beta_1 sample vectors are not the same length.")
+  }
+
+  # --- Scenario 1: Average Mother (Z = 0) ---
+  
+  # 1. Calculate log-odds for every MCMC sample
+  # logit(p) = beta_0 + beta_1 * 0  = beta_0
+  logit_samples_avg <- beta_0_samples
+  
+  # 2. Convert all log-odds samples to probability samples
+  prob_samples_avg <- logit_to_prob(logit_samples_avg)
+  
+  # 3. Summarize the resulting probability distribution
+  summary_avg <- list(
+    mean_prob = mean(prob_samples_avg),
+    ci_95 = quantile(prob_samples_avg, probs = c(0.025, 0.975))
+  )
+  
+  # --- Scenario 2: Lighter Mother (Z = -1, one SD below avg) ---
+  
+  # 1. Calculate log-odds for every MCMC sample
+  # logit(p) = beta_0 + beta_1 * (-1)
+  logit_samples_low <- beta_0_samples - beta_1_samples
+  
+  # 2. Convert all log-odds samples to probability samples
+  prob_samples_low <- logit_to_prob(logit_samples_low)
+  
+  # 3. Summarize the resulting probability distribution
+  summary_low <- list(
+    mean_prob = mean(prob_samples_low),
+    ci_95 = quantile(prob_samples_low, probs = c(0.025, 0.975))
+  )
+  
+  # --- Scenario 3: Heavier Mother (Z = 1, one SD above avg) ---
+  
+  # 1. Calculate log-odds for every MCMC sample
+  # logit(p) = beta_0 + beta_1 * (1)
+  logit_samples_high <- beta_0_samples + beta_1_samples
+  
+  # 2. Convert all log-odds samples to probability samples
+  prob_samples_high <- logit_to_prob(logit_samples_high)
+  
+  # 3. Summarize the resulting probability distribution
+  summary_high <- list(
+    mean_prob = mean(prob_samples_high),
+    ci_95 = quantile(prob_samples_high, probs = c(0.025, 0.975))
+  )
+  
+  # --- Return all results in a single list ---
+  results <- list(
+    average_mother_Z0 = summary_avg,
+    lighter_mother_Z_neg1 = summary_low,
+    heavier_mother_Z_pos1 = summary_high
+  )
+  
+  return(results)
+}
+
+# --- 3. Example Usage ---
+
+# !!! IMPORTANT !!!
 
 
+# --- Run the Analysis ---
+# Pass your MCMC samples to the function
+posterior_summary <- summarize_posterior_prob(post_df$beta0, post_df$beta1)
 
+# --- Print the results in a user-friendly format ---
+print("--- Posterior Probability Summary ---")
+print(posterior_summary)
+
+# You can also format this for your "broad audience" report:
+cat("\n--- Summary for a Broad Audience ---\n")
+
+format_summary <- function(name, summary) {
+  sprintf(
+    "For a %s:\n  - Estimated risk: %.1f%%\n  - 95%% Credible Interval: (%.1f%%, %.1f%%)\n",
+    name,
+    summary$mean_prob * 100,
+    summary$ci_95[1] * 100,
+    summary$ci_95[2] * 100
+  )
+}
+
+cat(format_summary("mother of *average* weight", 
+                   posterior_summary$average_mother_Z0))
+
+cat(format_summary("mother *one SD below* average weight", 
+                   posterior_summary$lighter_mother_Z_neg1))
+
+cat(format_summary("mother *one SD above* average weight", 
+                   posterior_summary$heavier_mother_Z_pos1))
+```
 
